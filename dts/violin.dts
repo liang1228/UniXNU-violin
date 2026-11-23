@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Xiaomi Pad 7S Pro (violin / O81A / XRING O1) board device tree for UniXNU.
+ *
+ * Baseline: MiCode/Xiaomi_Kernel_OpenSource branch violin-v-oss
+ * commit 99a9aff00a2856f065954672660bd0fe0ad0a064 (franklin1_o81a_pad.dtsi).
+ */
+
+/dts-v1/;
+/include/ "xring-o1.dtsi"
+
+/ {
+    model = "XiaoMi Franklin1 O81A PAD";
+    compatible = "XiaoMi,Franklin1-o81a-pad", "xring,o1";
+
+    /*
+     * TODO: populate exact DRAM base and size from live device UEFI/FDT memory map
+     * before setting board.example = false and generating boot/ADT images.
+     */
+    memory@0 {
+        device_type = "memory";
+        reg = <0x0 0x0 0x0 0x0>;
+    };
+};
+
+/*
+ * Reserved memory & O81A hardware notes from violin-v-oss (99a9aff00a2856f065954672660bd0fe0ad0a064)
+ * and the 2026-11-17 running FDT capture (verify against current target firmware before enabling):
+ *   - dpu_logo@20000000     (size 0x10000000, 256 MiB bootloader splash / display logo region)
+ *   - pstore@a0000000       (size 0x00100000, mtdoops_pmsg record=0x80000 console=0x40000 pmsg=0x40000)
+ *   - ufs_param@70001000    (vendor UFS parameter reservation)
+ *   - memdump_reserve@43480000 (vendor memory dump reservation; BL2/ADSP baselines in platform/O1/)
+ *   - UART divergence: base DTS enables dwuart6@ec11a000 (SPI 146) and disables dwuart3@ec118000 (SPI 144),
+ *     whereas the 2026-11-17 Android 17 FDT enabled dwuart3 and disabled dwuart6.
+ */

@@ -1,0 +1,8 @@
+# Kernel configuration for Xiaomi Pad 7S Pro (violin, macOS 27.3 / 26C5035r arm64e).
+# Storage, display, input, wireless, and GPU drivers for XRING O1 are pending bring-up.
+CONFIG_XNU_BUILD_ARCHIVES=y
+CONFIG_XNU_ARM_DT_PLATFORM=y
+CONFIG_XNU_ARMCPU=y
+CONFIG_XNU_DT_PANIC_REGION=y
+CONFIG_XNU_BOOT_PROGRESS=y
+CONFIG_XNU_ARMVIRT_PLATFORM=n

@@ -1,0 +1,4 @@
+[[source]]
+kind = "soc"
+name = "xring-o1"
+local = "../UniXNU-xring-o1-common"

@@ -1,0 +1,5 @@
+# Required firmware inputs: relative path | source | SHA-256 | consumer
+# Extracted firmware binaries never belong in Git; populate hashes from the target violin firmware package.
+# uefi/dpu_panel_init.bin | REQUIRED_VIOLIN_FIRMWARE_ARCHIVE | REQUIRED_SHA256 | uefi-violin display bring-up
+# wireless/mt6639/wifi_bt.bin | REQUIRED_VIOLIN_VENDOR_IMAGE | REQUIRED_SHA256 | MT6639 PCIe/UART wireless drivers
+# touch/novatek_o81a_fw.bin | REQUIRED_VIOLIN_VENDOR_IMAGE | REQUIRED_SHA256 | O81A Novatek SPI9 touch driver

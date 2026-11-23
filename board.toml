@@ -1,0 +1,86 @@
+schema_version = 2
+
+[board]
+# Keep example = true until live violin GPT/DRAM/uefi-violin inputs are verified and populated.
+example = true
+name = "violin"
+soc = "XRING O1"
+description = "Xiaomi Pad 7S Pro (O81A, XRING O1)"
+kit = "violin"
+soc_source = "xring-o1"
+os_profile = "ipados-27.0.1-24A446"
+
+[userdata]
+# TODO: populate first_lba / last_lba from live violin GPT userdata entry before packaging.
+first_lba = 0
+last_lba = 0
+lba_bytes = 4096
+
+[kernel]
+defconfig = "violin_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/xring-o1.config", "os:configs/ipados.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "component:ArmDTPlatform",
+  "component:ArmCpu",
+  "build-libpthread-kernel.py",
+]
+
+[firmware]
+# Placeholder paths for future uefi-violin (Mu-Silicium O1/O81A) integration.
+config = "violin"
+dsc = "Platforms/Xiaomi/violinPkg/violin.dsc"
+fd = "Build/violinPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+preflight = []
+submodules = []
+patches = []
+packages = ["{uefi}", "{tree}/package", "{tree}/drivers/DarwinBoot", "{edk2}"]
+
+[firmware.defines]
+DEVICE_MODEL = "violin"
+
+[payload]
+volume = "VIOLINESP"
+size_mib = 176
+loader = "firmware"
+title = "UniXNU (violin)"
+dram_size = "0x80000000"
+panic_screen = true
+timeout = 3
+kernel_args = ["-v", "serial=3", "debug=0x14e", "-no_slto_panic"]
+
+[payload.adt]
+chip_id = "8142"
+owned_memory_size = "0x80000000"
+psci_method = "smc"
+unique_chip_id = "required"
+root_match_volume_uuid = "2F8E6EED-68D5-4261-B8A3-12571BAA2DD4"
+
+[device_tree]
+source = "device:dts/violin.dts"
+include_dirs = ["soc:dts"]
+
+[components]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot"]
+
+[adt.defaults.u32]
+sleep-disabled = 1
+vmm-present = 1
+
+[package]
+unixnu = "../UniXNU"
+
+[package.defconfig]
+"ipados-27.0.1-24A446" = "violin_defconfig"
+"macos-27.3-26C5035r" = "violin_macos_defconfig"
+
+[os_overrides."macos-27.3-26C5035r".kernel]
+defconfig = "violin_macos_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/xring-o1.config", "os:configs/macos.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
+
+[os_overrides."macos-27.3-26C5035r".payload.adt]
+chip_id = "6050"
+root_match_volume_uuid = "84581E99-85BE-4957-AC53-2947E887B3E4"

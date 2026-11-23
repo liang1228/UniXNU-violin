@@ -1,0 +1,430 @@
+schema_version = 1
+
+[device]
+name = "violin"
+soc = "XRING O1"
+os_profile = "ipados-27.0.1-24A446"
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Bootloader unlocked; live device capture and UEFI/XNU bring-up pending."
+
+[[area]]
+id = "configuration"
+status = "planned"
+components = []
+paths = ["board.toml", "feeds.toml", "local.toml.example", "configs/**", ".github/**", ".gitignore"]
+inputs = [
+  "UniXNU Format 2 schema and arm64e profiles (ipados-27.0.1-24A446 primary, macos-27.3-26C5035r override).",
+  "Shared XRING O1 SoC repository (UniXNU-xring-o1-common) pinned locally via local.toml during development.",
+  "Static O1/O81A baseline from MiCode/Xiaomi_Kernel_OpenSource branch violin-v-oss (99a9aff00a2856f065954672660bd0fe0ad0a064).",
+]
+configuration = [
+  "board.toml sets schema_version = 2, soc = XRING O1, soc_source = xring-o1, os_profile = ipados-27.0.1-24A446, example = true.",
+  "package.defconfig maps ipados-27.0.1-24A446 -> violin_defconfig and macos-27.3-26C5035r -> violin_macos_defconfig with os_overrides.",
+]
+procedure = [
+  "Run ./unixnu defconfig violin_defconfig -D ../UniXNU-violin and ./unixnu status --json -D ../UniXNU-violin.",
+  "Run ./unixnu defconfig violin_macos_defconfig -D ../UniXNU-violin --os macos-27 and inspect os_overrides.",
+  "Run python3 scripts/porting-record.py check --device ../UniXNU-violin.",
+]
+findings = [
+  "XRING O1 is non-Qualcomm (GICv3 at 0xEBC00000, ARM SMMUv3, Mali Immortalis-G925), so SM8550 Qualcomm components are excluded.",
+  "Dual arm64e target profiles (ipados-27.0.1-24A446 and macos-27.3-26C5035r) share the Format 2 layer order with array replacement in os_overrides.",
+]
+completion = [
+  "All Format 2 config fragments, patch series, and local SoC source bindings resolve without errors for both arm64e profiles.",
+]
+limits = [
+  "board.example = true remains set until live device GPT, DRAM, and uefi-violin paths are filled; feeds.toml uses a placeholder git remote.",
+]
+next_action = [
+  "Populate live device firmware/partition inputs and pin an upstream UniXNU-xring-o1-common git remote.",
+]
+evidence = []
+
+[[area]]
+id = "firmware"
+status = "planned"
+components = ["DarwinBoot"]
+paths = ["proprietary-files.txt", "scripts/package.sh"]
+inputs = [
+  "Unlocked bootloader on Xiaomi Pad 7S Pro (violin / O81A); historical boot chain runs Android 17 / OS4.0.6.0.XOTCNXM.",
+  "Vendor EL2 hypervisor (XHEE via HVC) and BL31 SMC groups documented in violin-v-oss platform/O1/ (bl31_smc_id.h, hvc_id.h).",
+  "Future Mu-Silicium board firmware package (uefi-violin) integrating UniXNURamDiskDxe, FAT/DiskIoDxe, and DarwinBoot.",
+]
+configuration = [
+  "board.toml [firmware] defines placeholder uefi-violin DSC/FD paths under Platforms/Xiaomi/violinPkg/.",
+  "board.toml [payload] sets loader = firmware, volume = VIOLINESP, dram_size placeholder 0x80000000.",
+]
+procedure = [
+  "Inspect current Android 17 stock boot.img/vendor_boot.img headers and running FDT on hardware before authoring uefi-violin.",
+  "Verify BL31/XHEE HCR_EL2.APK/API behavior for arm64e PAC instructions across all 10 CPUs.",
+]
+findings = [
+  "Historical running FDT (2026-11-17) enabled dwuart3@ec118000 and disabled dwuart6@ec11a000, inverting the violin-v-oss base DTS setting.",
+  "BL31 exposes PACBTI SMC group (0x06) and XHEE runs at EL2, making hardware PAC trap verification mandatory before claiming arm64e support.",
+]
+completion = [
+  "uefi-violin builds SILICIUM_UEFI.fd, hands off via DarwinBoot, and confirms PAC instructions do not trap under EL2 on all cores.",
+]
+limits = [
+  "No uefi-violin Mu-Silicium repository exists yet; firmware handoff and GOP framebuffer remain unverified on hardware.",
+]
+next_action = [
+  "Capture current bootloader memory map, header constraints, and UART/EL2 PAC behavior from the unlocked violin device.",
+]
+evidence = []
+
+[[area]]
+id = "cpu"
+status = "planned"
+components = ["ArmCpu", "ArmDTPlatform"]
+paths = ["dts/**", "configs/**"]
+inputs = [
+  "10-core XRING O1 CPU cluster topology (2+2+4+2, MPIDR 0x0..0x900), PSCI 1.0 SMC, and ARMv8 generic timer PPIs 13/14/11/10 at 38.4 MHz.",
+  "GICv3 distributor at 0xEBC00000 (0x10000) and redistributor at 0xEBC80000 (0x280000, stride 0x40000).",
+  "Reference BSD-2-Clause-Patent O1 ArmCpu notes from ayyy7128/UniXNU-dijun (cntfrq_el0 == 38400000 assertion).",
+]
+configuration = [
+  "UniXNU-xring-o1-common/dts/xring-o1.dtsi defines cpu0..cpu9, top-level /psci (smc), /timer, and gic@ebc00000 (unixnu,adt-name = intc).",
+  "configs/violin_defconfig and configs/violin_macos_defconfig enable CONFIG_XNU_ARM_DT_PLATFORM and CONFIG_XNU_ARMCPU.",
+]
+procedure = [
+  "Compile dts/violin.dts with dtc -I dts -O dtb -i ../UniXNU-xring-o1-common/dts.",
+  "Implement XRING O1 timer bridge and secondary core PSCI bring-up before testing XNU kernel entry on hardware.",
+]
+findings = [
+  "UniXNU devicetree.py parses all direct children of /cpus as CPU nodes with reg, so cpu-map and idle-states are omitted from xring-o1.dtsi.",
+  "O1 Redistributor stride is 256 KiB (0x40000), requiring explicit redistributor-stride in DTS/ADT for ArmCpu.",
+]
+completion = [
+  "All enabled CPUs boot to their XNU entry checkpoint with functional generic timer ticks and GICv3 IPI delivery.",
+]
+limits = [
+  "XRING O1 platform timer bridge header referenced by UniXNU-dijun is not publicly released; live cntfrq_el0 on violin is unmeasured.",
+]
+next_action = [
+  "Verify live cntfrq_el0, MPIDR values, and EL2 PAC behavior on violin, then design XRING O1 ArmCpu/timer integration.",
+]
+evidence = []
+
+[[area]]
+id = "memory"
+status = "planned"
+components = []
+paths = ["dts/**"]
+inputs = [
+  "Physical DRAM banks and holes captured from UEFI/bootloader runtime memory map on violin.",
+  "Vendor reserved regions in violin-v-oss: dpu_logo@20000000 (256 MiB), pstore@a0000000 (1 MiB), ufs_param@70001000, memdump_reserve@43480000.",
+  "XRING O1 ARM SMMUv3 blocks (media1 0xE7800000, media2 0xE5400000, npu 0xE9400000; pcie disabled in base DTS).",
+]
+configuration = [
+  "dts/violin.dts keeps placeholder zero memory@0 reg = <0x0 0x0 0x0 0x0> until live device memory map capture.",
+  "dts/xring-o1.dtsi marks all arm,smmu-v3 nodes disabled until an SMMUv3 Darwin backend exists.",
+]
+procedure = [
+  "Dump live UEFI/FDT memory and reserved-memory nodes on violin and compare against violin-v-oss baseline.",
+  "Populate memory@0, reserved-memory children, and payload.adt owned_memory_* settings before ADT generation.",
+]
+findings = [
+  "O1 uses ARM SMMUv3 rather than MMU-500/SMMUv2, so UniXNU ArmSmmu4K cannot be reused.",
+]
+completion = [
+  "All firmware reservations and non-allocatable carveouts are represented in DTS/ADT and DMA allocations avoid corruption.",
+]
+limits = [
+  "Live DRAM bank layout and current OS4.0 reserved-memory carveouts are uncaptured.",
+]
+next_action = [
+  "Acquire live DRAM base/size and reserved-memory carveouts from target violin firmware.",
+]
+evidence = []
+
+[[area]]
+id = "storage"
+status = "planned"
+components = []
+paths = ["board.toml"]
+inputs = [
+  "XRING O1 Synopsys UFS controller at dwc_ufs@E1A40000 (MCQ 16 queues depth 64, 38.4 MHz reference clock).",
+  "GPT userdata partition geometry (first_lba, last_lba, lba_bytes = 4096) from violin.",
+]
+configuration = [
+  "board.toml [userdata] keeps zero LBA placeholders; xring-o1.dtsi marks ufs@e1a40000 disabled.",
+]
+procedure = [
+  "Record live GPT partition bounds for userdata on violin without modifying device partitions.",
+  "Study xring-modules/drivers/ufs/xring-ufs reset/CRG/clock sequences before designing an xring,ufs IOKit storage driver.",
+]
+findings = [
+  "Qualcomm ShengUfs is incompatible with xring,ufs hardware and clocks/resets.",
+]
+completion = [
+  "UFS block reads match known GPT sectors and root/Data APFS volumes mount without corruption.",
+]
+limits = [
+  "No xring,ufs Darwin block driver or live GPT userdata bounds exist yet.",
+]
+next_action = [
+  "Record live GPT userdata LBA geometry from violin and audit xring-ufs initialization requirements.",
+]
+evidence = []
+
+[[area]]
+id = "display"
+status = "planned"
+components = []
+paths = ["dts/**", "proprietary-files.txt"]
+inputs = [
+  "O81A dual-DSI DSC LCD panel (dsi_panel_o81a_36_02_0a_dualdsi_dsc_lcd_video) and KTZ8866 backlight on dw_i2c3 / dw_i2c11.",
+  "dpu_logo@20000000 framebuffer reservation (256 MiB) and UEFI display power sequence in franklin1_o81a_pad_display_overlay.dtsi.",
+]
+configuration = [
+  "No display or GOP component is included in board.toml yet.",
+]
+procedure = [
+  "Expose GOP framebuffer in future uefi-violin, verify stride/pixel format, then test GopFramebuffer compatibility on arm64e.",
+]
+findings = [
+  "O81A display overlay annotates MPMIC_MLDO7 and GPIOs 231/214/211/180 plus TE GPIO 141 as /* used in uefi */.",
+]
+completion = [
+  "Boot logo and UniXNU UEFI menu render cleanly on panel, followed by XNU framebuffer handoff and backlight control.",
+]
+limits = [
+  "Live GOP address, resolution, stride, and current OS4.0 DPU handover state are unverified.",
+]
+next_action = [
+  "Verify active UEFI splash framebuffer parameters on current firmware before adding display components.",
+]
+evidence = []
+
+[[area]]
+id = "input"
+status = "planned"
+components = []
+paths = ["proprietary-files.txt"]
+inputs = [
+  "O81A Novatek touch controller (NVT_xiaomi_touch_TC / xiaomi-touch-violin) on dw_spi9@E1507000 (IRQ dw_gpio2 12, CS dw_gpio2 16).",
+  "Pogo pin keyboard interface (nanosic,803) on dw_i2c10@4c.",
+]
+configuration = [
+  "No HID/touch components selected yet; QcomGeniSpi is Qualcomm-specific and excluded.",
+]
+procedure = [
+  "Audit xiaomi-modules/touch_driver/o81a and xring DW SPI/I2C/GPIO register headers in references/violin-v-oss.",
+]
+findings = [
+  "violin uses Synopsys DW SPI/I2C controllers rather than Qualcomm GENI SE, so touch needs an O1 DW SPI bus layer.",
+]
+completion = [
+  "UEFI/XNU key and touch events map accurately to panel coordinates with multi-touch and keyboard HID support.",
+]
+limits = [
+  "No DesignWare SPI/I2C or O81A Novatek Darwin driver implemented yet.",
+]
+next_action = [
+  "Confirm active touch firmware/DT properties in running FDT and scope DW SPI9 + GPIO2 bring-up.",
+]
+evidence = []
+
+[[area]]
+id = "gpu"
+status = "planned"
+components = []
+paths = ["dts/**"]
+inputs = [
+  "ARM Mali Immortalis-G925 (gpu@E9F80000, size 0x1000000, IRQ JOB/MMU/GPU 0x1B6..0x1B8, CSF avalon_r49p1 in violin-v-oss).",
+  "Closed-source Mali CSF firmware (mali_csffw.bin) on device vendor partition.",
+]
+configuration = [
+  "xring-o1.dtsi declares gpu@e9f80000 disabled; Adreno740 and AdrenoMetal are excluded as non-applicable.",
+]
+procedure = [
+  "Evaluate Mali CSF / Panthor architectural gap vs software rendering in initial arm64e iPadOS 27 / macOS 27 bring-up.",
+]
+findings = [
+  "XRING O1 GPU is Mali Immortalis-G925 (avalon_r49p1), completely distinct from UniXNU Adreno 740 drivers.",
+]
+completion = [
+  "Deferred past initial XNU kernel and display bring-up unless an O1 Mali driver and Metal bridge are built.",
+]
+limits = [
+  "No Mali CSF kernel driver or Darwin Metal backend exists in UniXNU.",
+]
+next_action = [
+  "Document GPU bring-up as post-kernel/display phase while bringing up software framebuffer first.",
+]
+evidence = []
+
+[[area]]
+id = "network"
+status = "planned"
+components = []
+paths = ["proprietary-files.txt"]
+inputs = [
+  "MediaTek MT6639 Wi-Fi / Bluetooth combo chipset attached to pcie1 (bypass-smmu) and 12 Mbps UART.",
+]
+configuration = [
+  "Qualcomm Ath12kWifi and QcaBluetooth components are excluded.",
+]
+procedure = [
+  "Audit xring-modules PCIe controller and connectivity/wlan/core/gen4m + bt/linux_v2 after storage/display bring-up.",
+]
+findings = [
+  "MT6639 replaces Qualcomm WCN7850 used on SM8550 devices; USB Ethernet/CDC-NCM is preferred for early host networking.",
+]
+completion = [
+  "Network reachability achieved over USB or native MT6639 driver with verified firmware loading.",
+]
+limits = [
+  "No XRING PCIe or MediaTek MT6639 Darwin driver exists yet.",
+]
+next_action = [
+  "Prioritize USB device/host networking ahead of native MT6639 bring-up.",
+]
+evidence = []
+
+[[area]]
+id = "cellular"
+status = "not-applicable"
+components = []
+paths = ["board.toml"]
+inputs = [
+  "Xiaomi Pad 7S Pro (violin / O81A) hardware SKU is a Wi-Fi-only tablet with no cellular baseband modem.",
+]
+configuration = [
+  "No baseband or QcomBaseband component configured in board.toml.",
+]
+procedure = [
+  "Keep cellular marked not-applicable unless a cellular hardware variant is introduced.",
+]
+findings = [
+  "Confirmed Wi-Fi-only pad configuration across violin-v-oss pad_o81a overlays and hardware inventory.",
+]
+completion = [
+  "Not applicable for Wi-Fi-only tablet hardware.",
+]
+limits = [
+  "Hardware lacks cellular modem circuitry.",
+]
+next_action = [
+  "No action required.",
+]
+evidence = []
+
+[[area]]
+id = "audio"
+status = "planned"
+components = []
+paths = ["board.toml"]
+inputs = [
+  "XRING O1 ADSP (XR_ADSP_RUN_MEM_BASE 0x47D80000 baseline) and O81A audio overlay in violin-v-oss.",
+]
+configuration = [
+  "No audio component selected in initial bring-up.",
+]
+procedure = [
+  "Map ADSP IPC and codec/PA topology from O1_audio.dtsi and franklin1_o81a_pad_audio_overlay.dtsi after core boot works.",
+]
+findings = [
+  "Qualcomm QcomGlink/ADSP audio components are inapplicable to XRING O1.",
+]
+completion = [
+  "Audio route playback operates through Darwin Audio HAL without kernel panics.",
+]
+limits = [
+  "XRING ADSP IPC protocol and O81A codec bring-up remain unstarted.",
+]
+next_action = [
+  "Defer until XNU userland boot reaches launchd and USB/display bring-up stabilizes.",
+]
+evidence = []
+
+[[area]]
+id = "power"
+status = "planned"
+components = []
+paths = ["board.toml"]
+inputs = [
+  "XRING O1 PMIC, regulator, CRG clock/reset, and SC6601/MCA charging overlays in violin-v-oss.",
+  "PSCI 1.0 SMC shutdown/reset support from BL31.",
+]
+configuration = [
+  "board.toml [adt.defaults.u32] sets sleep-disabled = 1 and vmm-present = 1 for initial bring-up.",
+]
+procedure = [
+  "Inspect platform/O1 CRG/PMIC headers and verify PSCI poweroff/reboot paths cleanly in UEFI/early XNU.",
+]
+findings = [
+  "sleep-disabled = 1 prevents deep CPU idle hangs prior to PMGR/regulator integration.",
+]
+completion = [
+  "PSCI shutdown/reset works reliably and battery/regulator telemetry matches device readings.",
+]
+limits = [
+  "No XRING PMIC/clock/battery driver or suspend/resume support implemented yet.",
+]
+next_action = [
+  "Validate PSCI reset/shutdown in early uefi-violin bring-up.",
+]
+evidence = []
+
+[[area]]
+id = "packaging"
+status = "planned"
+components = ["XnuPrelink"]
+paths = ["board.toml", "feeds.toml", "configs/**", "patches/**", "scripts/package.sh", "package/**"]
+inputs = [
+  "UniXNU os profiles: ipados-27.0.1-24A446 (primary, xnu-12377.121.6) and macos-27.3-26C5035r (os_overrides).",
+  "Host macOS-only steps (make-macos-data-seed.py / --skip-setup) deferred to macOS host or GitHub Actions macos-26 runner.",
+]
+configuration = [
+  "board.toml sets [kernel] archives, config_fragments, patch_series, and [os_overrides.\"macos-27.3-26C5035r\"].",
+  "configs/violin_defconfig and configs/violin_macos_defconfig provide initial CONFIG_XNU_* baseline.",
+]
+procedure = [
+  "Validate Format 2 resolution locally on WSL2 Ubuntu via ./unixnu defconfig and ./unixnu status --json.",
+  "Defer full XNU/IPSW/payload/boot.img assembly until live violin inputs and macOS runner/host are available.",
+]
+findings = [
+  "Linux host toolchain builds native XNU tooling and UniXNUPkg QEMU smoke artifacts, whereas IPSW/APFS Data seed tools target macOS.",
+]
+completion = [
+  "Full kernel, prelink, payload.img, and boot.img build cleanly from scripts/package.sh with verified hashes.",
+]
+limits = [
+  "example = true blocks build/bootimg until hardware inputs are filled; IPSW/kernelcache assets have not been downloaded yet.",
+]
+next_action = [
+  "Keep host configuration checks and UniXNUPkg QEMU smoke validation separate from device boot.img packaging.",
+]
+evidence = []
+
+[[area]]
+id = "diagnostics"
+status = "planned"
+components = []
+paths = ["porting.toml", "README.md", "AGENTS.md"]
+inputs = [
+  "UniXNU UniXNUPkg QEMU smoke harness (package/Scripts/smoke.sh) for host UEFI loader validation.",
+  "O1 pstore@a0000000 (1 MiB) and DW APB UART (dwuart3@ec118000 / dwuart6@ec11a000) hardware log channels.",
+]
+configuration = [
+  "kernel_args sets -v serial=3 debug=0x14e -no_slto_panic for verbose early diagnostics.",
+]
+procedure = [
+  "Run scripts/porting-record.py check --device ../UniXNU-violin and dtc compilation checks on every config change.",
+  "Run UniXNU/package/Scripts/smoke.sh in WSL2 QEMU to verify loader UI, kit injection, GPT slice, and XNU protocol stubs separately from hardware.",
+]
+findings = [
+  "QEMU smoke verification tests UniXNUPkg UEFI loader logic only and does not verify XRING O1 silicon or violin firmware.",
+]
+completion = [
+  "Every claimed milestone records exact commands, commits, logs, and device vs host boundary.",
+]
+limits = [
+  "No violin serial UART cable trace or hardware pstore dump captured under UniXNU yet.",
+]
+next_action = [
+  "Verify Format 2 scaffolding and run WSL2 QEMU smoke suite, archiving logs and screenshots separately from device state.",
+]
+evidence = []
