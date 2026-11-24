@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0 and Stage-1A/1B boot_b runs verified EL1 handoff (0x200000 / X0=0x8200000), zero-trap EL1 5-key PAC + TGran16=1, live DPU RCH9 linear framebuffer (0x29BFF000, 3200x2136 BGRX, VIDEO_MOD=1), and full custom uefi-violin (ViolinPkg) boot rendering UniXNU 0.1.0 3200x2136 graphical menu with 0 asserts; XNU kernel entry remains pending Stage-2."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0/1/2 boot_b runs verified EL1 handoff (0x200000 / X0=0x8200000), zero-trap EL1 5-key PAC + TGran16=1, live DPU RCH9 linear framebuffer (0x29BFF000, 3200x2136 BGRX, VIDEO_MOD=1), SPMI Ch1 PMIC physical key input (PCTRL_STATUS3=0x39 -> UniXNU input=yes), boot_b-embedded FAT16 payload disk (unixnu.toml), and full DarwinBoot -> ExitBootServices() -> arm64e Mach-O ABI stub entry (10/10 checks incl. EL1 PAC + GOP + ADT + RAMDisk + TrustCache); real Apple XNU kernel entry remains pending Stage-3."
 
 [[area]]
 id = "configuration"
@@ -66,15 +66,16 @@ findings = [
   "Bare-metal EL1 probe passed all 5 PAC key MSR write/readback pairs (APIA..APGA) and PACIA/IB/DA/DB/GA execution with 0 traps, proving XHEE sets HCR_EL2.APK=1 and HCR_EL2.API=1.",
   "Stage-1A read-only MMIO probe confirmed GICv3 (0xEBC00000/0xEBC80000, ICC_SRE_EL1=0x7) is accessible with 0 traps, while dwuart3@0xEC118000 raises synchronous external abort (ESR=0x96000010), requiring RAM/ramoops-only SerialPortLib (PcdSerialEnabled=FALSE).",
   "Stage-1B standalone uefi-violin (ViolinPkg on Mu_Basecore + UniXNUPkg + DarwinBootPkg) booted on violin boot_b with 0 asserts: PeilessSec -> DxeCore -> ArmGicV3Dxe -> ArmTimerDxe -> O1SerialDxe -> ViolinGopDxe (RCH9 0x29BFF000 3200x2136) -> UniXNURamDiskDxe (0x8200000 FDT + 0xA200000 initrd) -> DarwinBoot -> UniXNUDxe -> UniXNU 0.1.0 graphical menu (scale 3, landscape) -> 5s PSCI auto-reset back to untouched slot a.",
+  "Stage-2A/2B live boot_b runs verified SPMI Ch1 (0xE00011B0/0xE00011A0, non-secure while Ch0/0x800+ are TrustZone-firewalled) read-only polling of PMIC SID 0xF TOP_REG_PCTRL_STATUS3 (0x0E04 = 0x39 idle, active-LOW Vol-/Vol+/Power), ViolinPmicKeyDxe (SimpleTextIn/Ex + ConsoleInDevice + DevicePath -> UniXNU input=yes, QEMU Down/Up/Enter key-nav verified), BootShim VNPDISK1 FAT16 payload disk (0x100800000 -> ViolinPayloadDiskDxe -> EnhancedFatDxe -> \\EFI\\UniXNU\\unixnu.toml), and full DarwinBoot -> ExitBootServices() -> arm64e (0x80000002) Mach-O stub entry passing 10/10 ABI + PAC checks with 28,336 B unbroken dual-ring ramoops.",
 ]
 completion = [
   "uefi-violin builds VIOLIN_UEFI.fd, boots via boot_b, emits RAM logs, renders UniXNU menu with physical button input, and hands off a FAT payload cleanly through DarwinBoot to XNU.",
 ]
 limits = [
-  "Stage-1B verified UEFI + UniXNU 0.1.0 3200x2136 graphical menu and DarwinBoot loading, but PMIC button input, FAT payload boot, and DarwinBoot -> XNU kernel entry remain pending Stage-2.",
+  "Stage-2 verified physical PMIC key input (input=yes), FAT16 payload volume mounting, and DarwinBoot -> ExitBootServices() -> synthetic arm64e Mach-O ABI stub entry; real Apple XNU kernel compilation/entry and iPadOS/macOS boot remain pending Stage-3.",
 ]
 next_action = [
-  "Add PMIC button input and FAT payload delivery to uefi-violin, wire board.toml [firmware], and begin Stage-2 arm64e XNU entry bring-up.",
+  "Build XRING O1 arm64e XNU kernel and violin.adt, package them into the verified VNPDISK1 FAT payload disk, and capture early XNU arm_init logs via ramoops.",
 ]
 evidence = []
 
