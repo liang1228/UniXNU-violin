@@ -55,11 +55,11 @@ jobs:
 
       - name: Install blacktop/tap/ipsw
         run: |
-          brew install blacktop/tap/ipsw
+          brew install --formula blacktop/tap/ipsw
           sw_vers
           uname -m
           python3 --version
-          ipsw --version
+          ipsw version
           command -v /usr/bin/aea hdiutil diskutil
           df -h "$RUNNER_TEMP"
 
