@@ -50,6 +50,13 @@ void violin_backlight_init(IOService *nub)
     (void)nub;
 }
 
+/* Stage-7G optional hook overridden strongly by ViolinStorageProbe.cpp. */
+void violin_storage_init(IOService *nub) __attribute__((weak));
+void violin_storage_init(IOService *nub)
+{
+    (void)nub;
+}
+
 void violin_gop_presenter_init(void);
 }
 
@@ -186,4 +193,5 @@ extern "C" void violin_gop_presenter_init(void)
     }
 
     violin_backlight_init(nub);
+    violin_storage_init(nub);
 }
