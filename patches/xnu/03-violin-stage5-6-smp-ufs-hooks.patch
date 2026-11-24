@@ -1,0 +1,143 @@
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -566,6 +566,24 @@
+ }
+ #endif
+ 
++static void
++violin_stage5_watchdog_thread(void *arg, __unused wait_result_t wr)
++{
++	uint32_t sec = (uint32_t)(uintptr_t)arg;
++	if (sec == 0U || sec > 60U) {
++		sec = 15U;
++	}
++	IOSleep(sec * 1000U);
++	extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
++	extern volatile uint32_t armcpu_smp_running;
++	extern volatile uint32_t armcpu_core_timer[8];
++	extern volatile uint32_t armcpu_core_sgi[8];
++	kprintf("[XNU_STAGE5_WATCHDOG] TIMEOUT after %us (smp_running=%u timer0=%u sgi0=%u)\n",
++	    sec, armcpu_smp_running, armcpu_core_timer[0], armcpu_core_sgi[0]);
++	violin_psci_reset_or_off(1U, "stage5-watchdog");
++	thread_terminate(current_thread());
++}
++
+ void
+ bsd_init(void)
+ {
+@@ -1001,7 +1019,100 @@
+ 	bsd_init_kprintf("calling inittodr\n");
+ 	inittodr(0);
+ 
++	{
++		unsigned int stage3_exit = 0;
++		if (PE_parse_boot_argn("violin_stage3_exit", &stage3_exit, sizeof(stage3_exit)) && stage3_exit != 0U) {
++			extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
++			extern volatile uint32_t armcpu_registered;
++			extern volatile uint32_t armcpu_gic_ready;
++			extern volatile uint64_t armcpu_timer_interrupts;
++			uint64_t irqs_before = armcpu_timer_interrupts;
++			if (armcpu_gic_ready != 0U && irqs_before == 0ULL) {
++				uint64_t freq = 0, t0 = 0, now = 0;
++				__asm__ volatile ("mrs %0, cntfrq_el0" : "=r" (freq));
++				__asm__ volatile ("isb\n\tmrs %0, cntpct_el0" : "=r" (t0));
++				if (freq == 0ULL) { freq = 38400000ULL; }
++				do {
++					__asm__ volatile ("yield\n\tmrs %0, cntpct_el0" : "=r" (now));
++				} while (armcpu_timer_interrupts == 0ULL && (now - t0) < (freq / 4ULL));
++				irqs_before = armcpu_timer_interrupts;
++			}
++			if (armcpu_gic_ready != 0U && irqs_before > 0ULL) {
++				IOSleep(200);
++				uint64_t irqs_after = armcpu_timer_interrupts;
++				kprintf("[XNU_STAGE4] PASS: reached bsd_init -> pre-setconf/vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu delta_200ms=%llu)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_after, (unsigned long long)(irqs_after - irqs_before));
++				printf("[XNU_STAGE4] PASS: reached bsd_init -> pre-setconf/vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu delta_200ms=%llu)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_after, (unsigned long long)(irqs_after - irqs_before));
++				violin_psci_reset_or_off(1U, "stage4-bsd-checkpoint");
++			} else {
++				uint64_t ctl = 0, tval = 0;
++				__asm__ volatile ("mrs %0, cntv_ctl_el0" : "=r" (ctl));
++				__asm__ volatile ("mrs %0, cntv_tval_el0" : "=r" (tval));
++				kprintf("[XNU_STAGE4] FAIL: no timer IRQs (armcpu_reg=%u gic_ready=%u timer_irqs=%llu cntv_ctl=0x%llx cntv_tval=0x%llx)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_before,
++				    (unsigned long long)ctl, (unsigned long long)tval);
++				violin_psci_reset_or_off(1U, "stage4-no-timer");
++			}
++		} else {
++			unsigned int stage5_smp = 0;
++			if (PE_parse_boot_argn("violin_stage5_smp", &stage5_smp, sizeof(stage5_smp)) && stage5_smp != 0U) {
++				extern volatile uint32_t armcpu_registered;
++				extern volatile uint32_t armcpu_gic_ready;
++				extern volatile uint32_t armcpu_smp_running;
++				extern volatile uint32_t armcpu_smp_conduit;
++				extern volatile uint32_t armcpu_smp_step[8];
++				extern volatile uint32_t armcpu_smp_mpidr[8];
++				extern volatile uint32_t armcpu_smp_fail[8];
++				extern volatile int32_t armcpu_smp_psci_rc[8];
++				extern volatile uint32_t armcpu_core_timer[8];
++				extern volatile uint32_t armcpu_core_sgi[8];
++				extern void armcpu_ipi_selftest(uint64_t aff);
++				extern unsigned armcpu_stats_row(unsigned index, char *row, unsigned size);
++				uint32_t max_id = (uint32_t)ml_get_max_cpu_number();
++				if (max_id > 7U) { max_id = 7U; }
++				for (unsigned int w = 0; w < 30U && armcpu_smp_running < max_id; w++) {
++					IOSleep(50);
++				}
++				for (uint32_t c = 1U; c <= max_id; c++) {
++					if (armcpu_smp_step[c] == 7U) {
++						armcpu_ipi_selftest(armcpu_smp_mpidr[c]);
++					}
++				}
++				IOSleep(200);
++				kprintf("[XNU_STAGE5_SMP] online=%u/%u conduit=%u reg=%u gic=%u\n",
++				    1U + armcpu_smp_running, 1U + max_id, armcpu_smp_conduit,
++				    armcpu_registered, armcpu_gic_ready);
++				for (uint32_t c = 0U; c <= max_id; c++) {
++					kprintf("[XNU_STAGE5_CPU] cpu%u mpidr=0x%x step=%u psci_rc=%d fail=%u timer=%u sgi=%u\n",
++					    c, (c == 0U) ? 0U : armcpu_smp_mpidr[c],
++					    (c == 0U) ? 7U : armcpu_smp_step[c],
++					    (c == 0U) ? 0 : armcpu_smp_psci_rc[c],
++					    (c == 0U) ? 0U : armcpu_smp_fail[c],
++					    armcpu_core_timer[c], armcpu_core_sgi[c]);
++				}
++				char stats_buf[256];
++				if (armcpu_stats_row(0, stats_buf, sizeof(stats_buf)) > 0) {
++					kprintf("[XNU_STAGE5_SMP] %s\n", stats_buf);
++				}
++			}
++			unsigned int wd_sec = 0;
++			if (PE_parse_boot_argn("violin_stage5_watchdog", &wd_sec, sizeof(wd_sec)) && wd_sec > 0U) {
++				thread_t wd_thread = THREAD_NULL;
++				if (kernel_thread_start(violin_stage5_watchdog_thread, (void *)(uintptr_t)wd_sec, &wd_thread) == KERN_SUCCESS) {
++					thread_deallocate(wd_thread);
++					kprintf("[XNU_STAGE5_WATCHDOG] armed for %us\n", wd_sec);
++				}
++			}
++			{
++				extern void xring_ufs_ro_selftest(void);
++				xring_ufs_ro_selftest();
++			}
++		}
++	}
++
+ 	/* Mount the root file system. */
++	unsigned int violin_mount_tries = 0;
+ 	while (TRUE) {
+ 		int err;
+ 
+@@ -1030,6 +1141,13 @@
+ 		}
+ #endif
+ 		printf("cannot mount root, errno = %d\n", err);
++		violin_mount_tries++;
++		{
++			unsigned int ramoops_arg = 0;
++			if (PE_parse_boot_argn("violin_ramoops", &ramoops_arg, sizeof(ramoops_arg)) && ramoops_arg != 0U && violin_mount_tries >= 3U) {
++				panic("violin: vfs_mountroot failed after 3 tries (errno=%d rootdevice=%s)", err, rootdevice);
++			}
++		}
+ 	}
+ 
+ 	IOSecureBSDRoot(rootdevice);

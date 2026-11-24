@@ -30,6 +30,17 @@
 };
 
 /*
+ * Stage-6B: Expose XRING O1 dwc_ufs@e1a40000 (/arm-io/ufshc) in violin.adt for
+ * polled read-only XringUfs verification (xring-ufs-ro=1). Omit interrupts so
+ * IODTMapInterruptsSharing does not chase FDT phandle (ADT expects AAPL,phandle).
+ * Kept disabled in xring-o1.dtsi and absent in violin-qemu.dts for QEMU gate.
+ */
+&ufs {
+    status = "okay";
+    /delete-property/ interrupts;
+};
+
+/*
  * Verified live 2026-11-24 FDT/iomem findings (OS4.0.6.0.XOTCNXM / Linux 6.18.21):
  *   - Reserved carveouts in Bank 0 include rsv_mem_zero@0 (0x0+0x200000), rsv_mem_dpu_logo@20000000
  *     (actual reg 0x24200000+0x10000000, shifted from 0x20000000 in 6.6.30 DTS), rsv_mem_teeos@35680000

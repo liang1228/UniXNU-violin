@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0..5 boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk (31.95 MiB -> 100 MiB), prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU (xnu-12377.121.6, XNU_NATIVE_PAN=1, XNU_SOURCE_MOCKFS=1, FIPS HMAC sealed), 2-module StaticTrustCache (official 3,547 entries + Linux-signed 4 KiB-paged arm64e /sbin/launchd), corecrypto v27.0 19/19 FIPS POST (55 ms), AppleImage4/AMFI/Sandbox/APFS v3288.2.1, XRING O1 GIC-700 (GICv4.1, stride=0x40000, ctl=0x10->0x12) + PSCI SMC 8/8-core SMP (cpu0..1 A520 + cpu2..7 A725, step=7, psci_rc=0, fail=0, inter-core SGI 0 IPIs across all 8 cores, taken=19), mockfs md0 root mount, and first real signed arm64e EL0 PID 1 (/sbin/launchd) executing Darwin syscalls, EL0 hardware PAC (pac=ok(0xbc6afc0100001020)), 32-register SIMD syscall preservation (simd32=ok), /dev/console output, and SYS_reboot -> PSCI_SYSTEM_RESET(smc); xring,ufs block driver, real APFS root mount, cores 8..9 (X925), and iPadOS 27 GUI/userland boot remain pending Stage-6."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0..6 boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk (31.96 MiB -> 100 MiB), prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU (xnu-12377.121.6, XNU_NATIVE_PAN=1, XNU_SOURCE_MOCKFS=1, FIPS HMAC sealed), 2-module StaticTrustCache, corecrypto v27.0 19/19 FIPS POST (55 ms), AppleImage4/AMFI/Sandbox/APFS v3288.2.1, XRING O1 GIC-700 (GICv4.1, stride=0x40000, ctl=0x10->0x12) + PSCI SMC 8/8-core SMP (cpu0..1 A520 + cpu2..7 A725, step=7, psci_rc=0, fail=0, inter-core SGI 0 IPIs across all 8 cores), live read-only XringUfs UFSHCI 4.0 Legacy SDB driver inside arm64e XNU (DME_GET HS-G5 Rate B 2x2, 64-bit >4GiB non-coherent DMA, NOP, LUN 0..3 INQUIRY/READ CAPACITY(16), LUN 2 LBA 0 PMBR, LBA 1 EFI PART 4 KiB SHA-256 byte-exact match to Android b23eed7e..., 12 KiB multi-block 80 GPT entries userdata=3138056..129089527, boot_a ANDROID! v4 header), mockfs md0 root mount, and signed arm64e EL0 PID 1 (/sbin/launchd, pac=ok, simd32=ok) -> SYS_reboot -> PSCI_SYSTEM_RESET(smc); IOBlockStorageDevice APFS root mount, persistent UFS writes, GopFramebuffer display, cores 8..9 (X925), and iPadOS 27 GUI/userland boot remain pending Stage-7."
 
 [[area]]
 id = "configuration"
@@ -155,31 +155,34 @@ evidence = []
 id = "storage"
 status = "planned"
 components = []
-paths = ["board.toml"]
+paths = ["board.toml", "dts/**", "scripts/build-xring-ufs.py", "patches/xnu/03-violin-stage5-6-smp-ufs-hooks.patch"]
 inputs = [
-  "Live UFS device: SAMSUNG KLUFG4NHHB-F0G1 (rev 1500), 4096-byte logical/physical blocks, 80 partitions on /dev/block/sdc.",
-  "Raw /dev/block/sdc GPT & sysfs sdc80 cross-verified: userdata first_lba = 3138056, last_lba = 129089527 (125,951,472 LBAs = 515,897,229,312 B).",
+  "Live UFS device: SAMSUNG KLUFG4NHHB-F0G1 (rev 1500), 4096-byte logical/physical blocks; LUN 0/1 = 1,024 blocks (4 MiB), LUN 2 (/dev/block/sdc, 0:0:0:2) = 129,089,536 blocks (528.75 GB, 80 GPT partitions), LUN 3 = 81,920 blocks (320 MiB).",
+  "Raw /dev/block/sdc GPT & sysfs sdc80 cross-verified: userdata first_lba = 3138056, last_lba = 129089527 (125,951,472 LBAs = 515,897,229,312 B); LBA 1 4 KiB SHA-256 = b23eed7e8c34e52aa6a4a037b24954a366b2dc951d6451939160591e7f16a745; boot_a = 52104..76679, boot_b = 197256..221831.",
   "Live dwc_ufs@e1a40000 reg spans 4 regions in running FDT & /proc/iomem: ufs_ctrl_mem (0xe1a40000+0x3000), mcq (0xe1a43000+0x3000), ufs_sctrl_mem (0xe1a50000+0x1000), ufs_mphy_mem (0xe1a00000+0x40000); SPIs 43 and 46.",
 ]
 configuration = [
   "board.toml [userdata] sets first_lba = 3138056, last_lba = 129089527, lba_bytes = 4096.",
-  "xring-o1.dtsi marks ufs@e1a40000 disabled with the 4-range live reg layout.",
+  "xring-o1.dtsi keeps ufs@e1a40000 disabled; violin.dts enables &ufs with /delete-property/ interrupts for polled Stage-6B XringUfs verification (xring-ufs-ro=1), while violin-qemu.dts omits ufshc for clean QEMU skip.",
+  "UniXNU-xring-o1-common/drivers/XringUfs/XringUfs.cpp is built via scripts/build-xring-ufs.py (-Werror + arm64e-apple-ios27.0 audit + ranlib TOC) and linked via XNU_EXTRA_LD_ARCHIVES with zero source/UniXNU edits.",
 ]
 procedure = [
-  "Audit xring-modules/drivers/ufs/xring-ufs CRG/reset/clock/MCQ sequences and build a read-only UEFI/Darwin block driver before touching storage partitions.",
+  "Run Stage-6A bare-metal exception-safe MMIO probe before touching controller registers, then build libXringUfs.a, pass QEMU regression gate, and verify live read-only DME_GET / NOP / INQUIRY / READ CAPACITY(16) / READ(10) on violin boot_b.",
 ]
 findings = [
-  "Live FDT merges mcq+mcq_sqd into a single 0xe1a43000+0x3000 range compared with 6.6.30 DTS.",
-  "Qualcomm ShengUfs is incompatible with xring,ufs hardware and clocks/resets.",
+  "Live FDT merges mcq+mcq_sqd into a single 0xe1a43000+0x3000 range compared with 6.6.30 DTS; Qualcomm ShengUfs is incompatible with xring,ufs.",
+  "Stage-6A live probe proved EDK2-XRING hands off dwc_ufs@E1A40000 already enabled and clocked in Legacy Single Doorbell UFSHCI 4.0 mode (CAP=0x53870f1f AS64=1, VER=0x400, HCE=1, HCS=0x10f, CONFIG=0x0, UTRLBA=0x63ef1000, UTRLDBR=0, UTRLRSR=1, HCLKDIV=400 MHz, SCTRL_HC_STAT=0x5f5f); offset 0x0CC (UFS_SECURITY) traps with ESR=0x96000010 under TrustZone and must never be accessed.",
+  "Stage-6B live arm64e XNU run passed 100% read-only XringUfs verification (byte-identical 43,600 B dual-ring ramoops 70e77848...): UniPro DME_GET HS-G5 Rate B 2x2 (series=2, pwr=0x11, rc=0/0/0/0/0/0/0), 64-bit >4GiB non-coherent WriteCombine+dc civac DMA (utrl_pa=0x10a047000, ucd_pa=0x10a044000, data_pa=0x109219000), NOP OUT/IN (ocs=0x00), LUN 0..3 enumeration, LUN 2 LBA 0 PMBR (0x55aa/0xee), LBA 1 EFI PART 4 KiB SHA-256 exact match to Android (b23eed7e..., match_android=1), 12 KiB multi-block read of 80 GPT entries (userdata=3138056..129089527), and boot_a@52104 ANDROID! v4 header (kernel_sz=42940928) with clean firmware UTRL restoration.",
+  "FDT interrupts on /arm-io/ufshc cause IODTMapInterruptsSharing -> IODTGetICellCounts(NULL) abort because make-adt.py emits FDT phandle instead of AAPL,phandle; omitting interrupts on &ufs resolves this for polled mode.",
 ]
 completion = [
-  "UFS block reads match GPT headers and OS/SystemOS/Data APFS volumes mount cleanly within userdata.",
+  "UFS block reads match GPT headers (verified read-only in Stage-6B) and IOBlockStorageDevice publishes bounded userdata windows so OS/SystemOS/Data APFS volumes mount cleanly.",
 ]
 limits = [
-  "No xring,ufs Darwin block driver exists yet.",
+  "Stage-6B is strictly read-only self-test verification (zero write opcodes, polled slot 0); IOBlockStorageDevice publication, real APFS root volume mount, interrupt/MCQ multi-queue I/O, and persistent writes remain pending Stage-7.",
 ]
 next_action = [
-  "Scope xring,ufs reset/clock/MCQ requirements for future native UFS block driver work.",
+  "Wrap verified XringUfs Legacy SDB transport into a read-only IOBlockStorageDevice exposing bounded userdata windows for APFS volume verification in Stage-7.",
 ]
 evidence = []
 
