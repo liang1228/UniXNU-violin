@@ -289,6 +289,123 @@ next_action = [
 evidence = []
 
 [[area]]
+id = "cellular"
+status = "not-applicable"
+components = []
+paths = ["board.toml"]
+inputs = [
+  "Xiaomi Pad 7S Pro (violin / O81A / model 25053RP5CC) is a Wi-Fi-only tablet with no cellular baseband modem.",
+]
+configuration = [
+  "No baseband or QcomBaseband component configured in board.toml.",
+]
+procedure = [
+  "Keep cellular marked not-applicable unless a cellular hardware variant is introduced.",
+]
+findings = [
+  "Confirmed Wi-Fi-only pad hardware across live device properties, running-fdt.dtb, and violin-v-oss pad_o81a overlays.",
+]
+completion = [
+  "Not applicable for Wi-Fi-only tablet hardware.",
+]
+limits = [
+  "Hardware lacks cellular modem circuitry.",
+]
+next_action = [
+  "No action required.",
+]
+evidence = []
+
+[[area]]
+id = "audio"
+status = "planned"
+components = []
+paths = ["board.toml"]
+inputs = [
+  "XRING O1 ADSP (live rsv_mem_adsp_run@48780000 0x47d80000+0x1400000, rsv_mem_adsp_image@41680000+0xa00000) and Cirrus/Madera codec (i2c@ec102000 2-001a) observed in live sysfs.",
+]
+configuration = [
+  "No audio component selected in initial bring-up.",
+]
+procedure = [
+  "Map ADSP IPC and codec/PA topology from O1_audio.dtsi and live running-fdt.dts after core boot works.",
+]
+findings = [
+  "Live sysfs Headset extcon confirms Madera codec at i2c-2 0x1a; Qualcomm QcomGlink/ADSP audio components remain inapplicable.",
+]
+completion = [
+  "Audio route playback operates through Darwin Audio HAL without kernel panics.",
+]
+limits = [
+  "XRING ADSP IPC protocol and O81A codec bring-up remain unstarted.",
+]
+next_action = [
+  "Defer until XNU userland boot reaches launchd and USB/display bring-up stabilizes.",
+]
+evidence = []
+
+[[area]]
+id = "power"
+status = "planned"
+components = []
+paths = ["board.toml"]
+inputs = [
+  "XRING O1 PMIC/SPMI (e0001000.spmi pmic@f), CRG clock/reset, and SC6601/MCA charging observed in live device.",
+  "PSCI 1.0 SMC shutdown/reset support from BL31.",
+]
+configuration = [
+  "board.toml [adt.defaults.u32] sets sleep-disabled = 1 and vmm-present = 1 for initial bring-up.",
+]
+procedure = [
+  "Inspect platform/O1 CRG/PMIC headers and verify PSCI poweroff/reboot paths cleanly in UEFI/early XNU.",
+]
+findings = [
+  "sleep-disabled = 1 prevents deep CPU idle hangs prior to PMGR/regulator integration.",
+]
+completion = [
+  "PSCI shutdown/reset works reliably and battery/regulator telemetry matches device readings.",
+]
+limits = [
+  "No XRING PMIC/clock/battery driver or suspend/resume support implemented yet.",
+]
+next_action = [
+  "Validate PSCI reset/shutdown in early uefi-violin bring-up.",
+]
+evidence = []
+
+[[area]]
+id = "packaging"
+status = "planned"
+components = ["XnuPrelink"]
+paths = ["board.toml", "feeds.toml", "configs/**", "patches/**", "scripts/package.sh", "package/**"]
+inputs = [
+  "UniXNU os profiles: ipados-27.0.1-24A446 (primary, xnu-12377.121.6) and macos-27.3-26C5035r (os_overrides).",
+  "Live stock partition limits: boot_a (/dev/block/sdc17, 100,663,296 B, v4 ramdisk=0) and vendor_boot_a (/dev/block/sdc19, 100,663,296 B, VNDRBOOT v4 matching vendor_boot.py).",
+  "Host macOS-only steps (make-macos-data-seed.py / --skip-setup) deferred to macOS host or GitHub Actions macos-26 runner.",
+]
+configuration = [
+  "board.toml sets [kernel] archives, config_fragments, patch_series, and [os_overrides.\"macos-27.3-26C5035r\"].",
+  "configs/violin_defconfig and configs/violin_macos_defconfig provide initial CONFIG_XNU_* baseline.",
+]
+procedure = [
+  "Validate Format 2 resolution and standalone ADT generation on WSL2 Ubuntu via ./unixnu defconfig, ./unixnu status --json, and scripts/make-adt.py.",
+  "Defer full XNU/IPSW/payload/boot.img assembly until uefi-violin and macOS runner/host are available.",
+]
+findings = [
+  "Live vendor_boot_a matches UniXNU vendor_boot.py v4 (page_size=4096, header_size=2128, AVBf footer) within a 100,663,296 B partition; boot_a has ramdisk_size=0.",
+]
+completion = [
+  "Full kernel, prelink, payload.img, and boot.img/vendor_boot.img build cleanly from scripts/package.sh with verified hashes.",
+]
+limits = [
+  "example = true blocks build/bootimg until uefi-violin and firmware inputs are filled; IPSW/kernelcache assets have not been downloaded yet.",
+]
+next_action = [
+  "Keep Format 2 host validation and ADT smoke checks separate from device boot.img/vendor_boot.img packaging.",
+]
+evidence = []
+
+[[area]]
 id = "diagnostics"
 status = "planned"
 components = []
