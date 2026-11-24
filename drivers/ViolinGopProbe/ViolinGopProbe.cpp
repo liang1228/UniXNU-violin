@@ -36,6 +36,13 @@ void native_legacy_gpu_complete(void *display, int status)
     (void)status;
 }
 
+/* Phase-7B optional hook overridden strongly by ViolinLegacyDisplayProbe.cpp. */
+void violin_legacy_display_init(IOService *nub) __attribute__((weak));
+void violin_legacy_display_init(IOService *nub)
+{
+    (void)nub;
+}
+
 void violin_gop_presenter_init(void);
 }
 
@@ -48,8 +55,11 @@ extern "C" void violin_gop_presenter_init(void)
         return;
     }
 
-    unsigned int enabled = 0;
-    if (!PE_parse_boot_argn("violin-gop-presenter", &enabled, sizeof(enabled)) || enabled == 0u) {
+    unsigned int presenterEnabled = 0;
+    unsigned int legacyEnabled = 0;
+    PE_parse_boot_argn("violin-gop-presenter", &presenterEnabled, sizeof(presenterEnabled));
+    PE_parse_boot_argn("offline-legacy-gop", &legacyEnabled, sizeof(legacyEnabled));
+    if (presenterEnabled == 0u && legacyEnabled == 0u) {
         return;
     }
 
@@ -137,29 +147,34 @@ extern "C" void violin_gop_presenter_init(void)
         kprintf("[VIOLIN_GOP] FAIL: nub attach/start failed\n");
         return;
     }
+    gViolinDisplayNub = nub;
+
+    if (presenterEnabled != 0u) {
+        IOService *presenter = native_gop_presenter_create();
+        if (presenter == nullptr || !presenter->init()) {
+            if (presenter != nullptr) presenter->release();
+            kprintf("[VIOLIN_GOP] FAIL: NativeGOPPresenter create/init failed\n");
+        } else {
+            /* Attach presenter away from display-subsystem so IOMobileFramebufferLegacy
+             * sees only clean children on display-subsystem while sharing IODeviceMemory[0]. */
+            native_gop_presenter_set_source(presenter, nub);
+            if (!presenter->attach(parent) || !presenter->start(parent)) {
+                presenter->detach(parent);
+                presenter->release();
+                kprintf("[VIOLIN_GOP] FAIL: NativeGOPPresenter attach/start failed\n");
+            } else {
+                gViolinGopPresenter = presenter;
+                kprintf("[VIOLIN_GOP] presenter=ready ready=%u pa=0x%llx va=0x%llx dot_pitch=%u\n",
+                        native_gop_ready,
+                        static_cast<unsigned long long>(native_gop_physical),
+                        static_cast<unsigned long long>(native_gop_virtual),
+                        dotPitch);
+            }
+        }
+    }
     parent->release();
 
-    IOService *presenter = native_gop_presenter_create();
-    if (presenter == nullptr || !presenter->init()) {
-        if (presenter != nullptr) presenter->release();
-        nub->release();
-        kprintf("[VIOLIN_GOP] FAIL: NativeGOPPresenter create/init failed\n");
-        return;
+    if (legacyEnabled != 0u) {
+        violin_legacy_display_init(nub);
     }
-    native_gop_presenter_set_source(presenter, nub);
-    if (!presenter->attach(nub) || !presenter->start(nub)) {
-        presenter->detach(nub);
-        presenter->release();
-        nub->release();
-        kprintf("[VIOLIN_GOP] FAIL: NativeGOPPresenter attach/start failed\n");
-        return;
-    }
-
-    gViolinDisplayNub = nub;
-    gViolinGopPresenter = presenter;
-    kprintf("[VIOLIN_GOP] presenter=ready ready=%u pa=0x%llx va=0x%llx dot_pitch=%u\n",
-            native_gop_ready,
-            static_cast<unsigned long long>(native_gop_physical),
-            static_cast<unsigned long long>(native_gop_virtual),
-            dotPitch);
 }

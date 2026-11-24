@@ -7,3 +7,4 @@ arch:../../../patches/xnu-12377/darwin26-shared-region.patch
 01-violin-ramoops-console-psci.patch
 02-violin-arm64e-iig-ptrauth-cast.patch
 03-violin-stage5-6-smp-ufs-hooks.patch
+04-violin-arm64e-vfpthunk-ioworkloop-pm.patch

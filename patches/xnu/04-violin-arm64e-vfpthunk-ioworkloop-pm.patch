@@ -1,0 +1,64 @@
+--- a/iokit/Kernel/IOWorkLoop.cpp
++++ b/iokit/Kernel/IOWorkLoop.cpp
+@@ -706,6 +706,15 @@
+ 		result = false;
+ 	} else if (IOEventSource::kActive & inEventSource->flags) {
+ 		result = true;
++#if defined(HAS_APPLE_PAC) && \
++	__has_feature(ptrauth_member_function_pointer_type_discrimination)
++	} else if (OSDynamicCast(IOCommandGate, inEventSource) != nullptr) {
++		/* Under arm64e ptrauth member-function-pointer type discrimination,
++		 * OSMemberFunctionCast() returns the same virtual thunk (_vfpthunk_)
++		 * for every receiver class, which would wrongly classify all active
++		 * IOEventSources (IOPMRequestQueue, IOPMWorkQueue, etc.) as passive. */
++		result = false;
++#else
+ 	} else if (controlG) {
+ 		void *  ptr1;
+ 		void *  ptr2;
+@@ -716,6 +725,7 @@
+ 		if (ptr1 == ptr2) {
+ 			result = false;
+ 		}
++#endif
+ 	}
+ 
+ 	return result;
+--- a/iokit/Kernel/IOServicePM.cpp
++++ b/iokit/Kernel/IOServicePM.cpp
+@@ -507,12 +507,17 @@
+ 		assert(fDriverCallEntry);
+ 
+ 		// Check for powerChangeDone override.
++#if defined(HAS_APPLE_PAC) && \
++	__has_feature(ptrauth_member_function_pointer_type_discrimination)
++		fPCDFunctionOverride = true;
++#else
+ 		if (OSMemberFunctionCast(void (*)(void),
+ 		    getResourceService(), &IOService::powerChangeDone) !=
+ 		    OSMemberFunctionCast(void (*)(void),
+ 		    this, &IOService::powerChangeDone)) {
+ 			fPCDFunctionOverride = true;
+ 		}
++#endif
+ 
+ #if PM_VARS_SUPPORT
+ 		IOPMprot * prot = new IOPMprot;
+--- a/iokit/Kernel/IOPMrootDomain.cpp
++++ b/iokit/Kernel/IOPMrootDomain.cpp
+@@ -10872,10 +10872,15 @@
+ 				continue;
+ 			}
+ 
++#if defined(HAS_APPLE_PAC) && \
++	__has_feature(ptrauth_member_function_pointer_type_discrimination)
++			(void)baseFunc;
++#else
+ 			if (baseFunc ==
+ 			    OSMemberFunctionCast(void *, node, &IOService::systemWillShutdown)) {
+ 				continue;
+ 			}
++#endif
+ 
+ 			depth = node->getDepth( gIOPowerPlane );
+ 			if (depth <= rootDepth) {

@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24..25 Stage-0..7C boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk, zero-write peripheral inventory (FF-A v1.0, PERI_CRG I2C3/10/11/12 active, LPIS_ACTRL +0x4C0/+0x4C4=0, all 6 DW GPIO banks 0 traps, I2C3 KTZ8866A@0x11, LPIS_CRG security fence), prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU (xnu-12377.121.6, MAX_CPUS=10, XNU_NATIVE_PAN=1, XNU_SOURCE_MOCKFS=1, FIPS HMAC sealed), 2-module StaticTrustCache, corecrypto v27.0 19/19 FIPS POST, AppleImage4/AMFI/Sandbox/APFS v3288.2.1, XRING O1 GIC-700 + PSCI SMC 10/10-core SMP (2x A520 + 6x A725 + 2x Cortex-X925 cpu8..9, all step=7, psci_rc=0, fail=0, inter-core SGI 0 IPIs across all 10 cores), read-only XringUfs UFSHCI 4.0 Legacy SDB driver (HS-G5 Rate B 2x2, >4GiB 64-bit DMA, LUN 2 GPT 4 KiB SHA-256 byte-exact match to Android b23eed7e...), live NativeGOPPresenter 3200x2136 BGRX8888 EL0 present + 6-point scanout readback (38.384 ms = 712.3 MB/s via iOS 27 mach_msg2_trap -47), signed arm64e EL0 PID 1 (/sbin/launchd, ncpu=10, pac=ok, simd32=ok) -> SYS_reboot -> PSCI_SYSTEM_RESET(smc), and Wave 2A enrich-fileset-map.py achieving 0 extra stubs beyond upstream prelink-regression.json across both 18-kext and 28-kext (+IOSurface/+IOMobileGraphicsFamily) closures (QEMU -smp 10 gate PASS); NativeLegacyDisplay Phase-7B, IOBlockStorageDevice APFS root mount, persistent UFS writes, USB-NCM/backlight/touch drivers, and iPadOS 27 GUI userland remain pending subsequent Stage-7 waves."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24..25 Stage-0..7E boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk, zero-write peripheral inventory (FF-A v1.0, PERI_CRG I2C3/10/11/12 active, LPIS_ACTRL +0x4C0/+0x4C4=0, all 6 DW GPIO banks 0 traps, I2C3 KTZ8866A@0x11, LPIS_CRG security fence), prelinked iPadOS 27.0.1 (24A446) 28-kext MH_FILESET arm64e XNU (xnu-12377.121.6, MAX_CPUS=10, XNU_NATIVE_PAN=1, XNU_SOURCE_MOCKFS=1, 0 extra stubs beyond upstream prelink-regression.json, 212 native_original_branches_rebound, FIPS HMAC sealed), 04-violin-arm64e-vfpthunk-ioworkloop-pm.patch restoring arm64e clang-24 IOWorkLoop/PM execution, 2-module StaticTrustCache, corecrypto v27.0 19/19 FIPS POST, AppleImage4/AMFI/Sandbox/APFS v3288.2.1, XRING O1 GIC-700 + PSCI SMC 10/10-core SMP (2x A520 + 6x A725 + 2x Cortex-X925 cpu8..9, all step=7, psci_rc=0, fail=0), read-only XringUfs UFSHCI 4.0 Legacy SDB driver (HS-G5 Rate B 2x2, >4GiB 64-bit DMA, LUN 2 GPT 4 KiB SHA-256 exact match b23eed7e...), live NativeGOPPresenter Phase-7A (38.384 ms = 712.3 MB/s) AND live 28-kext NativeLegacyDisplay Phase-7B + IOSurface + IOMobileGraphicsFamily (PM stage=1..4 state=(en=1,pwr=1), 2x 27.34 MB 3200x2136 BGRA IOSurface -> IOMFB swap_start/submit/wait(1) in 58.0 ms copy = 471 MB/s with 6/6 exact scanout pixel readback), and signed arm64e EL0 PID 1 (/sbin/launchd, ncpu=10, pac=ok, simd32=ok) -> SYS_reboot -> PSCI_SYSTEM_RESET(smc); IOBlockStorageDevice APFS root mount, persistent UFS writes, USB-NCM/backlight/touch drivers, and full iPadOS 27 WindowServer GUI userland remain pending subsequent Stage-7 waves."
 
 [[area]]
 id = "configuration"
@@ -191,31 +191,33 @@ evidence = []
 id = "display"
 status = "planned"
 components = ["GopFramebuffer"]
-paths = ["dts/**", "proprietary-files.txt", "drivers/ViolinGopProbe/**", "scripts/build-violin-gop-presenter.py", "scripts/build-violin-stage7-el0-gop.py"]
+paths = ["dts/**", "proprietary-files.txt", "drivers/ViolinGopProbe/**", "scripts/build-violin-gop-presenter.py", "scripts/build-violin-stage7-el0-gop.py", "scripts/build-violin-legacy-display.py", "scripts/build-violin-stage7-el0-legacy.py", "patches/xnu/04-violin-arm64e-vfpthunk-ioworkloop-pm.patch"]
 inputs = [
   "Live panel: card0-DSI-1 connected/enabled, modes 3200x2136 @ 144/120/90/60/50/48/30 Hz, dsi_panel_o81a_0a_dualdsi_dsc_lcd_video.",
   "Live DPU/backlight: dpu@e7000000 (0x5a000), rsv_mem_dpu_logo 0x24200000 (256 MiB), panel0-backlight (max_brightness=4095) with ktz8866a@11 on i2c@ec103000 and i2c@ec10b000.",
 ]
 configuration = [
-  "ViolinGopProbe.cpp + upstream GopFramebuffer/NativeGOPPresenter.cpp (compiled read-only via build-violin-gop-presenter.py and linked via XNU_EXTRA_LD_ARCHIVES) dynamically publish display-subsystem nub from PE_current_console() under violin-gop-presenter=1.",
+  "ViolinGopProbe.cpp + upstream GopFramebuffer/NativeGOPPresenter.cpp (compiled read-only via build-violin-gop-presenter.py) dynamically publish display-subsystem nub from PE_current_console(), while ViolinLegacyDisplayProbe.cpp + libNativeLegacyDisplay.late.a (built from read-only upstream NativeLegacyDisplay.cpp via build-violin-legacy-display.py) late-load IOSurface + IOMobileGraphicsFamily and attach NativeLegacyDisplay under offline-legacy-gop=1 with NativeGOPPresenter coexisting read-only on parent /arm-io.",
+  "patches/xnu/04-violin-arm64e-vfpthunk-ioworkloop-pm.patch fixes arm64e clang-24 ptrauth_member_function_pointer_type_discrimination _vfpthunk_ comparisons in IOWorkLoop::eventSourcePerformsWork, IOServicePM.cpp, and IOPMrootDomain.cpp so gIOPMWorkLoop and IOMobileFramebufferLegacy PM stage=1..4 execute cleanly.",
 ]
 procedure = [
-  "Expose GOP simple framebuffer in uefi-violin reusing UEFI splash geometry, verify NativeGOPPresenter Phase-7A in QEMU and live violin boot_b, then advance to 28-kext NativeLegacyDisplay Phase-7B and KTZ8866A backlight.",
+  "Expose GOP simple framebuffer in uefi-violin reusing UEFI splash geometry, verify NativeGOPPresenter Phase-7A and 28-kext NativeLegacyDisplay Phase-7B in QEMU (-smp 10) and live violin boot_b, then add KTZ8866A backlight control.",
 ]
 findings = [
   "Stage-1A DPU probe and Stage-1B ViolinGopDxe confirmed active continuous-video scanout on RCH9 (SCENE0_RCH_EN=0x01840200, VIDEO_MOD=1, MIXER0=3200x2136): uncompressed linear framebuffer at 0x29BFF000 (inside rsv_mem_dpu_logo 0x24200000..0x34200000), stride 12800 B (3200x4), hardware format 8 (XRGB_8888 == UEFI BGRX 32bpp).",
   "UniXNU 0.1.0 rendered its 3200x2136 (scale 3, landscape) graphical menu via ViolinGopDxe on real violin hardware with 0 asserts when rsv_mem_dpu_logo is mapped Non-Cacheable.",
   "Stage-7A live peripheral probe confirmed PERI_CRG I2C3/I2C11 clocks and resets are active at handoff, I2C3/I2C11 pins are muxed to Func 1, and I2C3 @ 0xEC103000 retains IC_TAR=0x11 (KTZ8866A) with 400 kHz timing (IC_FS_HCNT=0x58, IC_FS_LCNT=0xa4) and 0 traps.",
   "Stage-7B Wave 1B passed upstream GopFramebuffer host tests (request-state.c, check-fence-wait.py), QEMU gate (1280x800, present_us=17857, readback=ok), and live violin boot_b (44,073 B byte-identical ramoops 9fb36964...): ViolinGopProbe + NativeGOPPresenter exposed 0x29BFF000 (dot-pitch=308) and signed arm64e EL0 PID 1 presented a 3200x2136 BGRX8888 4-quadrant pattern via iOS 27 mach_msg2_trap (-47) + thread_get_special_reply_port (-50) in 38.384 ms (712.3 MB/s) with 6/6 exact scanout pixel readback.",
+  "Stage-7E Wave 2B verified end-to-end 28-kext NativeLegacyDisplay Phase-7B + closed-source IOSurface + IOMobileGraphicsFamily across host PAC/prelink audit (379 vtable slots 0 base mismatches / 211 rewritten, 127 base + 13 subclass callsites audited/patched incl. super-blraa slots 312 & 319, 212 native_original_branches_rebound, 0 extra stubs), QEMU -smp 10 gate (QEMU_RC=0, 1280x800, 2 swaps, readback=ok), and live violin boot_b (37,769,216 B image 19fb9120..., boot_id=d34f9a03..., 46,697 B byte-identical ramoops 399f4767...): 10/10 CPUs online + XringUfs RO PASS + NativeLegacyDisplay PM stage=1..4 (state=(en=1,pwr=1), vsync 60 Hz) + EL0 IOSurfaceRoot sel 0 27.34 MB 3200x2136 BGRA surface -> 2x IOMFB sel 4/5/6(waitType=1) swaps (58.00/57.96 ms copy = 471 MB/s, 93.91/92.90 ms total, 6/6 exact scanout pixel readback, 3s hold) -> clean PSCI_SYSTEM_RESET(smc) + verified stock boot_b/boot_a SHA-256 restore.",
 ]
 completion = [
-  "Boot logo, UniXNU UEFI menu, and NativeGOPPresenter Phase-7A 3200x2136 EL0 scanout verified live; NativeLegacyDisplay Phase-7B (IOMobileGraphicsFamily/IOSurface) and KTZ8866A backlight remain for full iPadOS/macOS WindowServer bring-up.",
+  "Boot logo, UniXNU UEFI menu, NativeGOPPresenter Phase-7A, and 28-kext NativeLegacyDisplay Phase-7B (IOSurface + IOMobileGraphicsFamily) 3200x2136 EL0 swap + scanout readback all verified live; KTZ8866A backlight dimming and WindowServer GUI userland remain.",
 ]
 limits = [
-  "Closed-source IOMobileGraphicsFamily + NativeLegacyDisplay Phase-7B runtime bring-up and KTZ8866A I2C3/I2C11 backlight dimming remain pending Wave 2B.",
+  "CPU framebuffer copy path (58 ms / 27.34 MB) is used without native DPU plane swap or Mali GPU acceleration; KTZ8866A I2C3/I2C11 backlight dimming and WindowServer bring-up remain pending.",
 ]
 next_action = [
-  "Bring up 28-kext NativeLegacyDisplay Phase-7B on the zero-extra-stub Wave 2A prelink base and add KTZ8866A I2C3/I2C11 brightness control.",
+  "Add KTZ8866A I2C3/I2C11 brightness control and bring up IOBlockStorageDevice APFS root + USB-NCM ahead of WindowServer.",
 ]
 evidence = []
 
