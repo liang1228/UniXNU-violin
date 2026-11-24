@@ -1,0 +1,369 @@
+diff -ruN a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c	2026-11-24 18:14:59.164437587 +0800
++++ b/bsd/kern/bsd_init.c	2026-11-24 18:14:59.240744743 +0800
+@@ -1012,6 +1012,20 @@
+ #endif
+ 
+ 		bsd_init_kprintf("vfs_mountroot\n");
++		{
++			unsigned int stage3_exit = 0;
++			if (PE_parse_boot_argn("violin_stage3_exit", &stage3_exit, sizeof(stage3_exit)) && stage3_exit != 0U) {
++				extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
++				extern volatile uint32_t armcpu_registered;
++				extern volatile uint32_t armcpu_gic_ready;
++				extern volatile uint64_t armcpu_timer_interrupts;
++				kprintf("[XNU_STAGE3] PASS: reached bsd_init -> vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts);
++				printf("[XNU_STAGE3] PASS: reached bsd_init -> vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts);
++				violin_psci_reset_or_off(1U, "stage3-bsd-checkpoint");
++			}
++		}
+ 		if (0 == (err = vfs_mountroot())) {
+ 			break;
+ 		}
+diff -ruN a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c	2026-11-24 18:14:59.123286776 +0800
++++ b/osfmk/arm/arm_init.c	2026-11-24 18:14:59.239617118 +0800
+@@ -638,6 +638,9 @@
+ 
+ 	/* setup console output */
+ 	PE_init_printf(FALSE);
++	kprintf("[XNU_VIOLIN] arm_init online: memSize=0x%llx physBase=0x%llx virtBase=0x%llx timebase=%u Hz\n",
++	    (unsigned long long)args->memSize, (unsigned long long)args->physBase,
++	    (unsigned long long)args->virtBase, (unsigned int)gPEClockFrequencyInfo.timebase_frequency_hz);
+ 
+ #if __arm64__
+ #if DEBUG
+diff -ruN a/osfmk/arm64/cpu.c b/osfmk/arm64/cpu.c
+--- a/osfmk/arm64/cpu.c	2026-11-24 18:14:59.086335290 +0800
++++ b/osfmk/arm64/cpu.c	2026-11-24 18:14:59.238528498 +0800
+@@ -1287,6 +1287,9 @@
+ 	}
+ }
+ 
++/* Concrete symbol for ArmCpu weak_import under static -Wl,-kernel linking. */
++void (*arm64_platform_sleep_hook)(boolean_t boot_cpu) = NULL;
++
+ #if WITH_CLASSIC_S2R
+ void
+ sleep_token_buffer_init(void)
+diff -ruN a/osfmk/arm64/machine_routines.c b/osfmk/arm64/machine_routines.c
+--- a/osfmk/arm64/machine_routines.c	2026-11-24 18:14:59.135286773 +0800
++++ b/osfmk/arm64/machine_routines.c	2026-11-24 18:14:59.239821197 +0800
+@@ -911,6 +911,7 @@
+ void
+ halt_all_cpus(boolean_t reboot)
+ {
++	extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
+ 	if (reboot) {
+ 		printf("MACH Reboot\n");
+ 		PEHaltRestart(kPERestartCPU);
+@@ -918,6 +919,7 @@
+ 		printf("CPU halted\n");
+ 		PEHaltRestart(kPEHaltCPU);
+ 	}
++	violin_psci_reset_or_off(1U, reboot ? "halt_all_cpus(reboot)" : "halt_all_cpus(halt)");
+ 	while (1) {
+ 		;
+ 	}
+diff -ruN a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s	2026-11-24 18:14:59.098269672 +0800
++++ b/osfmk/arm64/start.s	2026-11-24 18:14:59.239230002 +0800
+@@ -485,6 +485,10 @@
+ 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
+ 	MSR_VBAR_EL1_X0
+ 
++	// Violin Stage-3 pre-MMU ramoops entry checkpoint (V=P)
++	adr		x9, Lviolin_msg_entry
++	bl		Lviolin_early_pa_log_dual
++
+ 
+ 	// Get the kernel memory parameters from the boot args
+ 	ldr		x22, [x20, BA_VIRT_BASE]			// Get the kernel virt base
+@@ -759,6 +763,14 @@
+ 	PAC_INIT_KEY_STATE tmp=x0, tmp2=x1
+ #endif /* HAS_APPLE_PAC */
+ 
++	// Violin Stage-3 pre-MMU checkpoint right before SCTLR_EL1 (PAC + MMU)
++	cbnz	x21, 9f
++	mov		x17, lr
++	adr		x9, Lviolin_msg_mmu
++	bl		Lviolin_early_pa_log_dual
++	mov		lr, x17
++9:
++
+ 	// Enable caches, MMU, ROP and JOP
+ 	MOV64   x0, SCTLR_EL1_DEFAULT
+ 	MSR_SCTLR_EL1_X0
+@@ -841,6 +853,64 @@
+ 	// Branch to the trampoline
+ 	br		x0
+ 
++	/*
++	 * Violin Stage-3 pre-MMU dual-ring ramoops logger (PA, MMU off).
++	 * Input: x9 = C string PA. Preserves x17, x19-x28, sp.
++	 * Appends only if header magic == "DBGC" (0x43474244).
++	 */
++	.align 2
++Lviolin_early_pa_log_dual:
++	mov		x16, lr
++	movz	x10, #0xA004, lsl #16		// console-ramoops-0 @ 0xA0040000
++	movz	w11, #0xFFF4
++	movk	w11, #0x0007, lsl #16		// cap = 0x80000 - 12 = 0x7FFF4
++	bl		Lviolin_early_pa_log_ring
++	movz	x10, #0xA00C, lsl #16		// pmsg-ramoops-0 @ 0xA00C0000
++	movz	w11, #0xFFF4
++	movk	w11, #0x0003, lsl #16		// cap = 0x40000 - 12 = 0x3FFF4
++	bl		Lviolin_early_pa_log_ring
++	mov		lr, x16
++	ret
++
++	.align 2
++Lviolin_early_pa_log_ring:
++	ldr		w12, [x10, #0]
++	movz	w13, #0x4244
++	movk	w13, #0x4347, lsl #16		// "DBGC"
++	cmp		w12, w13
++	b.ne	3f
++	ldr		w12, [x10, #4]			// start
++	ldr		w13, [x10, #8]			// size
++	cmp		w12, w11
++	b.hs	3f
++	cmp		w13, w11
++	b.hi	3f
++	mov		x14, x9
++	add		x15, x10, #12
++1:
++	ldrb	w0, [x14], #1
++	cbz		w0, 2f
++	strb	w0, [x15, w12, uxtw]
++	add		w12, w12, #1
++	cmp		w12, w11
++	csel	w12, wzr, w12, hs
++	cmp		w13, w11
++	cinc	w13, w13, lo
++	b		1b
++2:
++	dmb		sy
++	str		w12, [x10, #4]
++	str		w13, [x10, #8]
++	dsb		sy
++3:
++	ret
++
++Lviolin_msg_entry:
++	.asciz	"[XNU_EARLY] start_first_cpu (PA)\n"
++Lviolin_msg_mmu:
++	.asciz	"[XNU_EARLY] PAC keys loaded; enabling MMU+PAC\n"
++	.align 2
++
+ /*
+  * V=P to KVA trampoline.
+  *	x0 - KVA of cpu data pointer
+diff -ruN a/osfmk/kern/debug.c b/osfmk/kern/debug.c
+--- a/osfmk/kern/debug.c	2026-11-24 18:14:59.150764177 +0800
++++ b/osfmk/kern/debug.c	2026-11-24 18:14:59.240296471 +0800
+@@ -1370,6 +1370,10 @@
+ void __attribute__((noinline, optnone))
+ panic_spin_forever(void)
+ {
++#if defined(__arm64__)
++	extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
++	violin_psci_reset_or_off(1U, "panic_spin_forever");
++#endif
+ 	for (;;) {
+ #if defined(__arm__) || defined(__arm64__)
+ 		/* On arm32, which doesn't have a WFE timeout, this may not return.  But that should be OK on this path. */
+diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
+--- a/pexpert/arm/pe_serial.c	2026-11-24 18:14:59.111286778 +0800
++++ b/pexpert/arm/pe_serial.c	2026-11-24 18:14:59.239434180 +0800
+@@ -738,6 +738,162 @@
+  *
+  * @param str The string to output.
+  */
++
++/*****************************************************************************/
++/* Violin Stage-3 persistent dual-ring ramoops console + PSCI reset/off      */
++/*****************************************************************************/
++
++#define VIOLIN_RAMOOPS_CONSOLE_PA   0xA0040000ULL
++#define VIOLIN_RAMOOPS_CONSOLE_SZ   0x00080000ULL
++#define VIOLIN_RAMOOPS_PMSG_PA      0xA00C0000ULL
++#define VIOLIN_RAMOOPS_PMSG_SZ      0x00040000ULL
++#define VIOLIN_RAMOOPS_SIG          0x43474244U
++#define VIOLIN_QEMU_PL011_PA        0x09000000ULL
++#define VIOLIN_QEMU_PL011_SZ        0x00001000ULL
++
++struct violin_ramoops_hdr {
++	uint32_t sig;
++	uint32_t start;
++	uint32_t size;
++};
++
++static vm_offset_t violin_console_va = 0;
++static vm_offset_t violin_pmsg_va = 0;
++static vm_offset_t violin_pl011_va = 0;
++static uint32_t violin_ramoops_active = 0;
++static uint32_t violin_qemu_mode = 0;
++
++static void
++violin_ramoops_ring_putc(vm_offset_t base, uint32_t total_size, uint8_t c)
++{
++	if (base == 0 || total_size <= sizeof(struct violin_ramoops_hdr)) {
++		return;
++	}
++	volatile struct violin_ramoops_hdr *hdr = (volatile struct violin_ramoops_hdr *)base;
++	if (hdr->sig != VIOLIN_RAMOOPS_SIG) {
++		return;
++	}
++	uint32_t cap = total_size - (uint32_t)sizeof(struct violin_ramoops_hdr);
++	uint32_t start = hdr->start;
++	uint32_t size = hdr->size;
++	if (start >= cap || size > cap) {
++		return;
++	}
++	volatile uint8_t *data = (volatile uint8_t *)(base + sizeof(struct violin_ramoops_hdr));
++	data[start] = c;
++	start = (start + 1U >= cap) ? 0U : (start + 1U);
++	if (size < cap) {
++		size++;
++	}
++	__builtin_arm_dmb(DMB_ISHST);
++	hdr->start = start;
++	hdr->size = size;
++	if (c == '\n') {
++		__builtin_arm_dsb(DSB_SY);
++	}
++}
++
++static void
++violin_ramoops_transmit_data(uint8_t c)
++{
++	violin_ramoops_ring_putc(violin_console_va, (uint32_t)VIOLIN_RAMOOPS_CONSOLE_SZ, c);
++	violin_ramoops_ring_putc(violin_pmsg_va, (uint32_t)VIOLIN_RAMOOPS_PMSG_SZ, c);
++	if (violin_pl011_va != 0) {
++		volatile uint32_t *fr = (volatile uint32_t *)(violin_pl011_va + 0x18U);
++		volatile uint32_t *dr = (volatile uint32_t *)(violin_pl011_va + 0x00U);
++		for (unsigned int spin = 0; spin < 100000U; spin++) {
++			if ((*fr & (1U << 5)) == 0U) {
++				break;
++			}
++		}
++		*dr = (uint32_t)c;
++	}
++}
++
++static void
++violin_ramoops_puts(const char *s)
++{
++	if (s == NULL) {
++		return;
++	}
++	while (*s != '\0') {
++		violin_ramoops_transmit_data((uint8_t)(*s++));
++	}
++	__builtin_arm_dsb(DSB_SY);
++}
++
++static void
++violin_ramoops_init(void)
++{
++}
++
++static unsigned int
++violin_ramoops_transmit_ready(void)
++{
++	return 1U;
++}
++
++static unsigned int
++violin_ramoops_receive_ready(void)
++{
++	return 0U;
++}
++
++static uint8_t
++violin_ramoops_receive_data(void)
++{
++	return 0U;
++}
++
++SECURITY_READ_ONLY_LATE(static struct pe_serial_functions) violin_ramoops_serial_functions =
++{
++	.init = violin_ramoops_init,
++	.transmit_ready = violin_ramoops_transmit_ready,
++	.transmit_data = violin_ramoops_transmit_data,
++	.receive_ready = violin_ramoops_receive_ready,
++	.receive_data = violin_ramoops_receive_data,
++	.has_irq = false,
++	.device = SERIAL_UNKNOWN
++};
++
++void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
++
++void
++violin_psci_reset_or_off(uint32_t delay_sec, const char *reason)
++{
++	if (!violin_ramoops_active) {
++		return;
++	}
++	violin_ramoops_puts("\n[XNU_VIOLIN_EXIT] reason=");
++	violin_ramoops_puts(reason ? reason : "unknown");
++	violin_ramoops_puts(violin_qemu_mode ? " action=PSCI_SYSTEM_OFF(hvc)\n" : " action=PSCI_SYSTEM_RESET(smc)\n");
++	__builtin_arm_dsb(DSB_SY);
++
++	if (delay_sec > 0U && !violin_qemu_mode) {
++		uint64_t freq = 0, t0 = 0, now = 0;
++		__asm__ volatile ("mrs %0, cntfrq_el0" : "=r" (freq));
++		__asm__ volatile ("isb\n\tmrs %0, cntpct_el0" : "=r" (t0));
++		if (freq == 0ULL) {
++			freq = 38400000ULL;
++		}
++		uint64_t wait_ticks = (uint64_t)delay_sec * freq;
++		do {
++			__asm__ volatile ("yield\n\tmrs %0, cntpct_el0" : "=r" (now));
++		} while ((now - t0) < wait_ticks);
++	}
++
++	__asm__ volatile ("msr daifset, #15\n\tdsb sy\n\tisb" ::: "memory");
++	register uint64_t x0 __asm__("x0") = violin_qemu_mode ? 0x84000008ULL : 0x84000009ULL;
++	register uint64_t x1 __asm__("x1") = 0;
++	register uint64_t x2 __asm__("x2") = 0;
++	register uint64_t x3 __asm__("x3") = 0;
++	if (violin_qemu_mode) {
++		__asm__ volatile ("hvc #0" : "+r" (x0), "+r" (x1), "+r" (x2), "+r" (x3) :: "memory");
++	} else {
++		__asm__ volatile ("smc #0" : "+r" (x0), "+r" (x1), "+r" (x2), "+r" (x3) :: "memory");
++	}
++}
++
+ static void uart_puts_force_poll(
+ 	const char *str);
+ 
+@@ -899,6 +1055,25 @@
+ 		return gPESF != NULL;
+ 	}
+ 
++	{
++		unsigned int ramoops_arg = 0;
++		if (PE_parse_boot_argn("violin_ramoops", &ramoops_arg, sizeof(ramoops_arg)) && ramoops_arg != 0U) {
++			unsigned int qemu_arg = 0;
++			if (PE_parse_boot_argn("violin_qemu", &qemu_arg, sizeof(qemu_arg)) && qemu_arg != 0U) {
++				violin_qemu_mode = 1U;
++				violin_pl011_va = ml_io_map(VIOLIN_QEMU_PL011_PA, VIOLIN_QEMU_PL011_SZ);
++			}
++			violin_console_va = ml_io_map_wcomb(VIOLIN_RAMOOPS_CONSOLE_PA, VIOLIN_RAMOOPS_CONSOLE_SZ);
++			violin_pmsg_va = ml_io_map_wcomb(VIOLIN_RAMOOPS_PMSG_PA, VIOLIN_RAMOOPS_PMSG_SZ);
++			violin_ramoops_active = 1U;
++			register_serial_functions(&violin_ramoops_serial_functions);
++			serial_do_transmit = 1;
++			uart_initted = true;
++			violin_ramoops_puts("[XNU_RAMOOPS] serial_init online (wcomb dual-ring)\n");
++			return 1;
++		}
++	}
++
+ 	soc_base = pe_arm_get_soc_base_phys();
+ 
+ 	if (soc_base == 0) {

@@ -1,8 +1,8 @@
 schema_version = 2
 
 [board]
-# Keep example = true until live violin GPT/DRAM/uefi-violin inputs are verified and populated.
-example = true
+# Stage-3 active device configuration (verified live GPT/DRAM/EL1/PAC/GOP/PMIC/DarwinBoot in Stages 0-2).
+example = false
 name = "violin"
 soc = "XRING O1"
 description = "Xiaomi Pad 7S Pro (O81A, XRING O1)"
@@ -19,7 +19,9 @@ lba_bytes = 4096
 [kernel]
 defconfig = "violin_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/xring-o1.config", "os:configs/ipados.config"]
-patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
+# Omit os:patches/xnu/series because its zzz-boot-progress.patch assumes sheng's XNU_SHENG_PMGR hunk in bsd_init.c;
+# device:patches/xnu/series includes darwin26-{syscalls,kpi,shared-region}.patch directly plus violin patches.
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "device:patches/xnu/series"]
 archives = [
   "build-corecrypto-14.py",
   "build-corecrypto-14.py --namespace",
@@ -29,10 +31,10 @@ archives = [
 ]
 
 [firmware]
-# Placeholder paths for future uefi-violin (Mu-Silicium O1/O81A) integration.
+# Standalone Mu_Basecore-based UEFI firmware in ../uefi-violin (ViolinPkg).
 config = "violin"
-dsc = "Platforms/Xiaomi/violinPkg/violin.dsc"
-fd = "Build/violinPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+dsc = "Platforms/Xiaomi/ViolinPkg/ViolinPkg.dsc"
+fd = "Build/ViolinPkg/{target}_CLANGPDB/FV/VIOLIN_UEFI.fd"
 preflight = []
 submodules = []
 patches = []
@@ -45,23 +47,25 @@ DEVICE_MODEL = "violin"
 # Verified 2026-11-24 stock /dev/block/sdc17 (boot_a) and /dev/block/sdc19 (vendor_boot_a):
 # both partitions are 100,663,296 bytes (96 MiB) with AVBf footers; boot_a is Android v4
 # (ramdisk_size = 0) and vendor_boot_a matches UniXNU vendor_boot v4 (VNDRBOOT, page_size = 4096).
-# Set max_image_bytes = 100663296 when uefi-violin boot/vendor_boot packaging lands.
+max_image_bytes = 100663296
 
 [payload]
 volume = "VIOLINESP"
-size_mib = 176
+size_mib = 64
 loader = "firmware"
 title = "UniXNU (violin)"
 # Matches memory@100000000 (2 GiB window inside verified clean 12 GiB high bank 0x100000000..0x3ffffdfff).
 dram_size = "0x80000000"
-panic_screen = true
+panic_screen = false
 timeout = 3
-kernel_args = ["-v", "serial=3", "debug=0x14e", "-no_slto_panic"]
+# serial=3 enables XNU serial console (backed by violin_ramoops=1, never physical dwuart3@0xEC118000);
+# debug=0x10a = DB_LOG_PI_SCRN|DB_KPRT|DB_PRT (no DB_HALT/DB_NMI hang); cpus=1 for Stage-3 BSP bring-up.
+kernel_args = ["-v", "serial=3", "debug=0x10a", "-enable_kprintf_spam", "-no_slto_panic", "wdt=-1", "cpus=1", "violin_ramoops=1", "violin_stage3_exit=1"]
 
 [payload.adt]
 chip_id = "8142"
-# Matches clean 2 GiB bootstrap window inside verified 12 GiB high bank (0x100000000..0x3ffffdfff).
-owned_memory_size = "0x80000000"
+# 512 MiB owned memory window fits cleanly above VNPDISK1 payload disk in both QEMU (2 GiB) and violin (4 GiB).
+owned_memory_size = "0x20000000"
 psci_method = "smc"
 unique_chip_id = "required"
 root_match_volume_uuid = "2F8E6EED-68D5-4261-B8A3-12571BAA2DD4"
@@ -87,7 +91,7 @@ unixnu = "../UniXNU"
 [os_overrides."macos-27.3-26C5035r".kernel]
 defconfig = "violin_macos_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/xring-o1.config", "os:configs/macos.config"]
-patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "device:patches/xnu/series"]
 
 [os_overrides."macos-27.3-26C5035r".payload.adt]
 chip_id = "6050"

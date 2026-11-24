@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0/1/2 boot_b runs verified EL1 handoff (0x200000 / X0=0x8200000), zero-trap EL1 5-key PAC + TGran16=1, live DPU RCH9 linear framebuffer (0x29BFF000, 3200x2136 BGRX, VIDEO_MOD=1), SPMI Ch1 PMIC physical key input (PCTRL_STATUS3=0x39 -> UniXNU input=yes), boot_b-embedded FAT16 payload disk (unixnu.toml), and full DarwinBoot -> ExitBootServices() -> arm64e Mach-O ABI stub entry (10/10 checks incl. EL1 PAC + GOP + ADT + RAMDisk + TrustCache); real Apple XNU kernel entry remains pending Stage-3."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0/1/2/3 boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), 40 MiB FAT32 VNPDISK1 payload disk, and native --skip-prelink arm64e Apple XNU (xnu-12377.121.6, FIPS HMAC sealed) through start_first_cpu -> PAC+MMU -> serial_init (wcomb ramoops) -> initialize_screen (3200x2136) -> arm_init (38.4 MHz) -> pmap_startup (19.7 ms) -> zone_init -> corecrypto 19/19 FIPS POST (191 ms) -> ArmDTPlatform/IONVRAM -> vnguard -> expected kern_trustcache.c:592 (image4 interface not available) -> PSCI_SYSTEM_RESET; prelinked Apple kext closure, root mount, and OS userland boot remain pending Stage-4."
 
 [[area]]
 id = "configuration"
@@ -28,7 +28,7 @@ procedure = [
 ]
 findings = [
   "Live OS4.0.6.0.XOTCNXM running FDT (1c13390e..., 490,412 B) differs from the 2026-11-17 FDT snapshot (a6b4ba0f...) and confirms root compatible XiaoMi,Xring_o1-o81a-pad.",
-  "Dual arm64e target profiles (ipados-27.0.1-24A446 and macos-27.3-26C5035r) resolve cleanly against the updated DTS and board.toml.",
+  "Dual arm64e target profiles (ipados-27.0.1-24A446 and macos-27.3-26C5035r) resolve cleanly; Stage-3 switched board.toml to example = false with real ViolinPkg DSC/FD paths, source corecrypto bootstrap, and device-scoped Linux arm64e toolchain shim + prepare-xnu.py without modifying upstream UniXNU.",
 ]
 completion = [
   "All Format 2 config fragments, patch series, ADT generation, and upstream git pins resolve with board.example = false once uefi-violin exists.",
@@ -67,15 +67,16 @@ findings = [
   "Stage-1A read-only MMIO probe confirmed GICv3 (0xEBC00000/0xEBC80000, ICC_SRE_EL1=0x7) is accessible with 0 traps, while dwuart3@0xEC118000 raises synchronous external abort (ESR=0x96000010), requiring RAM/ramoops-only SerialPortLib (PcdSerialEnabled=FALSE).",
   "Stage-1B standalone uefi-violin (ViolinPkg on Mu_Basecore + UniXNUPkg + DarwinBootPkg) booted on violin boot_b with 0 asserts: PeilessSec -> DxeCore -> ArmGicV3Dxe -> ArmTimerDxe -> O1SerialDxe -> ViolinGopDxe (RCH9 0x29BFF000 3200x2136) -> UniXNURamDiskDxe (0x8200000 FDT + 0xA200000 initrd) -> DarwinBoot -> UniXNUDxe -> UniXNU 0.1.0 graphical menu (scale 3, landscape) -> 5s PSCI auto-reset back to untouched slot a.",
   "Stage-2A/2B live boot_b runs verified SPMI Ch1 (0xE00011B0/0xE00011A0, non-secure while Ch0/0x800+ are TrustZone-firewalled) read-only polling of PMIC SID 0xF TOP_REG_PCTRL_STATUS3 (0x0E04 = 0x39 idle, active-LOW Vol-/Vol+/Power), ViolinPmicKeyDxe (SimpleTextIn/Ex + ConsoleInDevice + DevicePath -> UniXNU input=yes, QEMU Down/Up/Enter key-nav verified), BootShim VNPDISK1 FAT16 payload disk (0x100800000 -> ViolinPayloadDiskDxe -> EnhancedFatDxe -> \\EFI\\UniXNU\\unixnu.toml), and full DarwinBoot -> ExitBootServices() -> arm64e (0x80000002) Mach-O stub entry passing 10/10 ABI + PAC checks with 28,336 B unbroken dual-ring ramoops.",
+  "Stage-3 live boot_b run verified BootShim 84 MiB PAYLOAD_MAX_SIZE + 40 MiB FAT32 VNPDISK1 payload disk + ViolinUEFI-Stage3 (4 GiB Bank 1) + DarwinBoot handoff (pa 0x103004000, entry 0x10353A488, window 512 MiB, FB 0x29BFF000 3200x2136) into real FIPS-HMAC-sealed arm64e XNU xnu-12377.121.6 (--skip-prelink), reaching start_first_cpu (PA) -> PAC+MMU -> serial_init (wcomb ramoops) -> initialize_screen -> arm_init (38.4 MHz) -> pmap_startup (19.7 ms) -> zone_init -> corecrypto 19/19 FIPS POST (191 ms) -> ArmDTPlatform/IONVRAM -> vnguard -> expected kern_trustcache.c:592 (image4 interface not available) -> PSCI_SYSTEM_RESET(smc) with byte-identical 34,279 B dual-ring ramoops and verified stock boot_b/boot_a SHA-256 restore.",
 ]
 completion = [
   "uefi-violin builds VIOLIN_UEFI.fd, boots via boot_b, emits RAM logs, renders UniXNU menu with physical button input, and hands off a FAT payload cleanly through DarwinBoot to XNU.",
 ]
 limits = [
-  "Stage-2 verified physical PMIC key input (input=yes), FAT16 payload volume mounting, and DarwinBoot -> ExitBootServices() -> synthetic arm64e Mach-O ABI stub entry; real Apple XNU kernel compilation/entry and iPadOS/macOS boot remain pending Stage-3.",
+  "Stage-3 proved native --skip-prelink arm64e XNU entry through corecrypto FIPS POST, ArmDTPlatform/IONVRAM, and vnguard up to kern_trustcache.c:592; prelinked AppleImage4/AMFI/Sandbox kext closure, ArmCpu matching under PE_lockdown_iokit(), root mount, and OS userland boot remain pending Stage-4.",
 ]
 next_action = [
-  "Build XRING O1 arm64e XNU kernel and violin.adt, package them into the verified VNPDISK1 FAT payload disk, and capture early XNU arm_init logs via ramoops.",
+  "Supply lawful IPSW inputs for XnuPrelink (AppleImage4/AMFI/Sandbox closure) to pass kern_trustcache.c:592 and exercise the XRING O1 GIC-700 (GICv4.1) ArmCpu driver and bsd_init on hardware.",
 ]
 evidence = []
 
@@ -431,14 +432,15 @@ procedure = [
 findings = [
   "Live baseline confirms 490,412 B FDT, 38.4 MHz CNTFRQ_EL0, 10/10 QARMA3 PAuth/FPAC, raw GPT userdata, and v4 boot/vendor_boot layout.",
   "Stage-0 bare-metal probe verified dual-ring DBGC persistent RAM logging at 0xA0040000 (console-ramoops-0, 512 KiB) and 0xA00C0000 (pmsg-ramoops-0, 256 KiB) survives PSCI warm reset and EDK2-XRING slot-b-to-slot-a auto-fallback with byte-identical 2,121 B telemetry.",
+  "Stage-3 added pre-MMU start.s PA ramoops checkpoints and post-MMU pe_serial.c ml_io_map_wcomb dual-ring console (violin_ramoops=1) plus PSCI reset/off hooks, capturing byte-identical 34,279 B live arm64e XNU boot logs (SHA-256 68f9e2b9...) without touching physical dwuart3@0xEC118000.",
 ]
 completion = [
   "Every claimed milestone records exact commands, commits, logs, and host vs EL1/hardware boundaries.",
 ]
 limits = [
-  "No violin serial UART trace or custom uefi-violin/XNU boot log captured yet.",
+  "Physical dwuart3@0xEC118000 remains EL1-firewalled; live XNU diagnostics rely on dual-ring ramoops until a runtime USB/network/display debug sink is added.",
 ]
 next_action = [
-  "Proceed to uefi-violin Mu-Silicium platform bring-up and capture early UEFI/RAM logs on hardware.",
+  "Retain dual-ring ramoops telemetry and PSCI auto-reset safeguards during Stage-4 prelinked kext closure and ArmCpu GIC-700 bring-up.",
 ]
 evidence = []

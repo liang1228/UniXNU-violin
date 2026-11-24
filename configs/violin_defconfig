@@ -1,8 +1,10 @@
 # Kernel configuration for Xiaomi Pad 7S Pro (violin, iPadOS 27.0.1 / 24A446 arm64e).
-# Storage, display, input, wireless, and GPU drivers for XRING O1 are pending bring-up.
+# Stage-3 native (--skip-prelink) bring-up uses internal source corecrypto14 provider;
+# storage, display, input, wireless, and GPU drivers for XRING O1 are pending bring-up.
 CONFIG_XNU_BUILD_ARCHIVES=y
+CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
 CONFIG_XNU_ARM_DT_PLATFORM=y
 CONFIG_XNU_ARMCPU=y
 CONFIG_XNU_DT_PANIC_REGION=y
-CONFIG_XNU_BOOT_PROGRESS=y
+CONFIG_XNU_BOOT_PROGRESS=n
 CONFIG_XNU_ARMVIRT_PLATFORM=n
