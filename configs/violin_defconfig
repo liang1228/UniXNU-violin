@@ -2,6 +2,7 @@
 # Stage-3 native (--skip-prelink) bring-up uses internal source corecrypto14 provider;
 # storage, display, input, wireless, and GPU drivers for XRING O1 are pending bring-up.
 CONFIG_XNU_BUILD_ARCHIVES=y
+CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
 CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
 CONFIG_XNU_ARM_DT_PLATFORM=y
 CONFIG_XNU_ARMCPU=y

@@ -1,27 +1,51 @@
 diff -ruN a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 --- a/bsd/kern/bsd_init.c	2026-11-24 18:14:59.164437587 +0800
 +++ b/bsd/kern/bsd_init.c	2026-11-24 18:14:59.240744743 +0800
-@@ -1012,6 +1012,20 @@
- #endif
+@@ -1001,6 +1001,44 @@
+ 	bsd_init_kprintf("calling inittodr\n");
+ 	inittodr(0);
  
- 		bsd_init_kprintf("vfs_mountroot\n");
-+		{
-+			unsigned int stage3_exit = 0;
-+			if (PE_parse_boot_argn("violin_stage3_exit", &stage3_exit, sizeof(stage3_exit)) && stage3_exit != 0U) {
-+				extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
-+				extern volatile uint32_t armcpu_registered;
-+				extern volatile uint32_t armcpu_gic_ready;
-+				extern volatile uint64_t armcpu_timer_interrupts;
-+				kprintf("[XNU_STAGE3] PASS: reached bsd_init -> vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu)\n",
-+				    armcpu_registered, armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts);
-+				printf("[XNU_STAGE3] PASS: reached bsd_init -> vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu)\n",
-+				    armcpu_registered, armcpu_gic_ready, (unsigned long long)armcpu_timer_interrupts);
-+				violin_psci_reset_or_off(1U, "stage3-bsd-checkpoint");
++	{
++		unsigned int stage3_exit = 0;
++		if (PE_parse_boot_argn("violin_stage3_exit", &stage3_exit, sizeof(stage3_exit)) && stage3_exit != 0U) {
++			extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
++			extern volatile uint32_t armcpu_registered;
++			extern volatile uint32_t armcpu_gic_ready;
++			extern volatile uint64_t armcpu_timer_interrupts;
++			uint64_t irqs_before = armcpu_timer_interrupts;
++			if (armcpu_gic_ready != 0U && irqs_before == 0ULL) {
++				uint64_t freq = 0, t0 = 0, now = 0;
++				__asm__ volatile ("mrs %0, cntfrq_el0" : "=r" (freq));
++				__asm__ volatile ("isb\n\tmrs %0, cntpct_el0" : "=r" (t0));
++				if (freq == 0ULL) { freq = 38400000ULL; }
++				do {
++					__asm__ volatile ("yield\n\tmrs %0, cntpct_el0" : "=r" (now));
++				} while (armcpu_timer_interrupts == 0ULL && (now - t0) < (freq / 4ULL));
++				irqs_before = armcpu_timer_interrupts;
++			}
++			if (armcpu_gic_ready != 0U && irqs_before > 0ULL) {
++				IOSleep(200);
++				uint64_t irqs_after = armcpu_timer_interrupts;
++				kprintf("[XNU_STAGE4] PASS: reached bsd_init -> pre-setconf/vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu delta_200ms=%llu)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_after, (unsigned long long)(irqs_after - irqs_before));
++				printf("[XNU_STAGE4] PASS: reached bsd_init -> pre-setconf/vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu delta_200ms=%llu)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_after, (unsigned long long)(irqs_after - irqs_before));
++				violin_psci_reset_or_off(1U, "stage4-bsd-checkpoint");
++			} else {
++				uint64_t ctl = 0, tval = 0;
++				__asm__ volatile ("mrs %0, cntv_ctl_el0" : "=r" (ctl));
++				__asm__ volatile ("mrs %0, cntv_tval_el0" : "=r" (tval));
++				kprintf("[XNU_STAGE4] FAIL: no timer IRQs (armcpu_reg=%u gic_ready=%u timer_irqs=%llu cntv_ctl=0x%llx cntv_tval=0x%llx)\n",
++				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_before,
++				    (unsigned long long)ctl, (unsigned long long)tval);
++				violin_psci_reset_or_off(1U, "stage4-no-timer");
 +			}
 +		}
- 		if (0 == (err = vfs_mountroot())) {
- 			break;
- 		}
++	}
++
+ 	/* Mount the root file system. */
+ 	while (TRUE) {
+ 		int err;
 diff -ruN a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
 --- a/osfmk/arm/arm_init.c	2026-11-24 18:14:59.123286776 +0800
 +++ b/osfmk/arm/arm_init.c	2026-11-24 18:14:59.239617118 +0800
@@ -38,12 +62,15 @@ diff -ruN a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
 diff -ruN a/osfmk/arm64/cpu.c b/osfmk/arm64/cpu.c
 --- a/osfmk/arm64/cpu.c	2026-11-24 18:14:59.086335290 +0800
 +++ b/osfmk/arm64/cpu.c	2026-11-24 18:14:59.238528498 +0800
-@@ -1287,6 +1287,9 @@
+@@ -1287,6 +1287,12 @@
  	}
  }
  
 +/* Concrete symbol for ArmCpu weak_import under static -Wl,-kernel linking. */
 +void (*arm64_platform_sleep_hook)(boolean_t boot_cpu) = NULL;
++
++/* AMFI CoreEntitlements DER stack alignment shift on 4 KiB native kernel (1 << 15 = 32 KiB). */
++SECURITY_READ_ONLY_LATE(int) unixnu_kernel_stack_shift = 15;
 +
  #if WITH_CLASSIC_S2R
  void
@@ -178,7 +205,7 @@ diff -ruN a/osfmk/kern/debug.c b/osfmk/kern/debug.c
 diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
 --- a/pexpert/arm/pe_serial.c	2026-11-24 18:14:59.111286778 +0800
 +++ b/pexpert/arm/pe_serial.c	2026-11-24 18:14:59.239434180 +0800
-@@ -738,6 +738,162 @@
+@@ -738,6 +738,167 @@
   *
   * @param str The string to output.
   */
@@ -305,15 +332,20 @@ diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
 +void
 +violin_psci_reset_or_off(uint32_t delay_sec, const char *reason)
 +{
++	uint32_t qemu_mode = violin_qemu_mode;
 +	if (!violin_ramoops_active) {
-+		return;
++		unsigned int q = 0;
++		if (PE_parse_boot_argn("violin_qemu", &q, sizeof(q)) && q != 0U) {
++			qemu_mode = 1U;
++		}
++	} else {
++		violin_ramoops_puts("\n[XNU_VIOLIN_EXIT] reason=");
++		violin_ramoops_puts(reason ? reason : "unknown");
++		violin_ramoops_puts(qemu_mode ? " action=PSCI_SYSTEM_OFF(hvc)\n" : " action=PSCI_SYSTEM_RESET(smc)\n");
++		__builtin_arm_dsb(DSB_SY);
 +	}
-+	violin_ramoops_puts("\n[XNU_VIOLIN_EXIT] reason=");
-+	violin_ramoops_puts(reason ? reason : "unknown");
-+	violin_ramoops_puts(violin_qemu_mode ? " action=PSCI_SYSTEM_OFF(hvc)\n" : " action=PSCI_SYSTEM_RESET(smc)\n");
-+	__builtin_arm_dsb(DSB_SY);
 +
-+	if (delay_sec > 0U && !violin_qemu_mode) {
++	if (delay_sec > 0U && !qemu_mode) {
 +		uint64_t freq = 0, t0 = 0, now = 0;
 +		__asm__ volatile ("mrs %0, cntfrq_el0" : "=r" (freq));
 +		__asm__ volatile ("isb\n\tmrs %0, cntpct_el0" : "=r" (t0));
@@ -327,11 +359,11 @@ diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
 +	}
 +
 +	__asm__ volatile ("msr daifset, #15\n\tdsb sy\n\tisb" ::: "memory");
-+	register uint64_t x0 __asm__("x0") = violin_qemu_mode ? 0x84000008ULL : 0x84000009ULL;
++	register uint64_t x0 __asm__("x0") = qemu_mode ? 0x84000008ULL : 0x84000009ULL;
 +	register uint64_t x1 __asm__("x1") = 0;
 +	register uint64_t x2 __asm__("x2") = 0;
 +	register uint64_t x3 __asm__("x3") = 0;
-+	if (violin_qemu_mode) {
++	if (qemu_mode) {
 +		__asm__ volatile ("hvc #0" : "+r" (x0), "+r" (x1), "+r" (x2), "+r" (x3) :: "memory");
 +	} else {
 +		__asm__ volatile ("smc #0" : "+r" (x0), "+r" (x1), "+r" (x2), "+r" (x3) :: "memory");
@@ -341,7 +373,7 @@ diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
  static void uart_puts_force_poll(
  	const char *str);
  
-@@ -899,6 +1055,25 @@
+@@ -899,6 +1060,25 @@
  		return gPESF != NULL;
  	}
  

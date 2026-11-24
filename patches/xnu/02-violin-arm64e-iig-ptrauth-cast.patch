@@ -1,0 +1,11 @@
+diff -ruN a/iokit/DriverKit/Makefile b/iokit/DriverKit/Makefile
+--- a/iokit/DriverKit/Makefile	2026-11-24 20:30:00.000000000 +0800
++++ b/iokit/DriverKit/Makefile	2026-11-24 20:30:00.000000000 +0800
+@@ -60,6 +60,7 @@
+ 	%.h : %.iig
+ 	@$(LOG_IIG) "$@"
+ 	$(_v)$(IIG) --def $< --header $@ --impl $(patsubst %.h,%.iig.cpp,$@) --framework-name DriverKit ${OTHER_IIG_FLAGS} -- ${OTHER_IIG_CFLAGS} $(_vstdout)
++	$(_v)python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); s=p.read_text(); old="#define SimpleMemberFunctionCast(cfnty, self, func) ({ union { typeof(func) memfun; cfnty cfun; } pair; pair.memfun = func; pair.cfun; })"; new="#if defined(__arm64__) && __has_feature(ptrauth_member_function_pointer_type_discrimination)\n#define SimpleMemberFunctionCast(cfnty, self, func) ({ union { typeof(func) memfun; struct { void *ptr; uintptr_t adj; } raw; } _u; _u.memfun = (func); union { void *p; cfnty f; } _out; _out.p = __builtin_ptrauth_auth_and_resign(_u.raw.ptr, 0, __builtin_ptrauth_type_discriminator(typeof(func)), 0, __builtin_ptrauth_type_discriminator(cfnty)); _out.f; })\n#else\n"+old+"\n#endif"; p.write_text(s.replace(old,new,1)) if old in s else None' $(patsubst %.h,%.iig.cpp,$@)
+ 
+ $(GENERATED_IMPL) : $(GENERATED_HEADERS)
+ 

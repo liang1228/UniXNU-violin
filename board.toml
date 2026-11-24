@@ -60,12 +60,12 @@ panic_screen = false
 timeout = 3
 # serial=3 enables XNU serial console (backed by violin_ramoops=1, never physical dwuart3@0xEC118000);
 # debug=0x10a = DB_LOG_PI_SCRN|DB_KPRT|DB_PRT (no DB_HALT/DB_NMI hang); cpus=1 for Stage-3 BSP bring-up.
-kernel_args = ["-v", "serial=3", "debug=0x10a", "-enable_kprintf_spam", "-no_slto_panic", "wdt=-1", "cpus=1", "violin_ramoops=1", "violin_stage3_exit=1"]
+kernel_args = ["-v", "serial=3", "debug=0x10a", "-enable_kprintf_spam", "-no_slto_panic", "wdt=-1", "use_contiguous_hint=0", "kt_fixed_zones=120", "cpus=1", "violin_ramoops=1", "violin_stage3_exit=1"]
 
 [payload.adt]
 chip_id = "8142"
-# 512 MiB owned memory window fits cleanly above VNPDISK1 payload disk in both QEMU (2 GiB) and violin (4 GiB).
-owned_memory_size = "0x20000000"
+# 1 GiB owned memory window accommodates 91 MiB MH_FILESET + APFS/zone pools inside QEMU (2 GiB) and violin (4 GiB).
+owned_memory_size = "0x40000000"
 psci_method = "smc"
 unique_chip_id = "required"
 root_match_volume_uuid = "2F8E6EED-68D5-4261-B8A3-12571BAA2DD4"
@@ -76,6 +76,10 @@ include_dirs = ["soc:dts"]
 
 [components]
 include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot"]
+
+[adt.chosen.u32]
+# XRING O1 has no Apple CTRR; ml_unsafe_kernel_text_init requires this property so bsd_init -> sdt_init does not assert.
+kernel-ctrr-to-be-enabled = 0
 
 [adt.defaults.u32]
 sleep-disabled = 1
