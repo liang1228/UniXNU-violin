@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 baseline and Stage-0 bare-metal boot_b probe confirm EL1 handoff at 0x200000 (x0=0x8200000 FDT), zero-trap EL1 5-key PAC MSR writes + QARMA3/FPAC execution under XHEE, hardware TGran16=1 (16 KiB pages), PSCI 1.1 SMC, and automated slot-b-to-slot-a ramoops telemetry; uefi-violin and XNU entry remain pending."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0 and Stage-1A/1B boot_b runs verified EL1 handoff (0x200000 / X0=0x8200000), zero-trap EL1 5-key PAC + TGran16=1, live DPU RCH9 linear framebuffer (0x29BFF000, 3200x2136 BGRX, VIDEO_MOD=1), and full custom uefi-violin (ViolinPkg) boot rendering UniXNU 0.1.0 3200x2136 graphical menu with 0 asserts; XNU kernel entry remains pending Stage-2."
 
 [[area]]
 id = "configuration"
@@ -64,16 +64,17 @@ procedure = [
 findings = [
   "EDK2-XRING 1.0 user removes fastboot boot (unknown command), but flashing inactive boot_b with set_active b auto-falls back to untouched slot a ('Switch to slot 0') after 7 retries while preserving console-ramoops-0 and pmsg-ramoops-0 across warm reboot.",
   "Bare-metal EL1 probe passed all 5 PAC key MSR write/readback pairs (APIA..APGA) and PACIA/IB/DA/DB/GA execution with 0 traps, proving XHEE sets HCR_EL2.APK=1 and HCR_EL2.API=1.",
-  "Live running-fdt.dtb confirms dwuart3@ec118000 (SPI 144) is status=okay while dwuart6@ec11a000 (SPI 146) is status=disabled.",
+  "Stage-1A read-only MMIO probe confirmed GICv3 (0xEBC00000/0xEBC80000, ICC_SRE_EL1=0x7) is accessible with 0 traps, while dwuart3@0xEC118000 raises synchronous external abort (ESR=0x96000010), requiring RAM/ramoops-only SerialPortLib (PcdSerialEnabled=FALSE).",
+  "Stage-1B standalone uefi-violin (ViolinPkg on Mu_Basecore + UniXNUPkg + DarwinBootPkg) booted on violin boot_b with 0 asserts: PeilessSec -> DxeCore -> ArmGicV3Dxe -> ArmTimerDxe -> O1SerialDxe -> ViolinGopDxe (RCH9 0x29BFF000 3200x2136) -> UniXNURamDiskDxe (0x8200000 FDT + 0xA200000 initrd) -> DarwinBoot -> UniXNUDxe -> UniXNU 0.1.0 graphical menu (scale 3, landscape) -> 5s PSCI auto-reset back to untouched slot a.",
 ]
 completion = [
-  "uefi-violin builds SILICIUM_UEFI.fd, boots via boot_b, emits RAM/UART logs, renders UniXNU menu, and hands off cleanly to DarwinBoot.",
+  "uefi-violin builds VIOLIN_UEFI.fd, boots via boot_b, emits RAM logs, renders UniXNU menu with physical button input, and hands off a FAT payload cleanly through DarwinBoot to XNU.",
 ]
 limits = [
-  "No uefi-violin Mu-Silicium repository exists yet; Stage-0 bare-metal probe does not prove EDK II SEC/DXE or DarwinBoot execution.",
+  "Stage-1B verified UEFI + UniXNU 0.1.0 3200x2136 graphical menu and DarwinBoot loading, but PMIC button input, FAT payload boot, and DarwinBoot -> XNU kernel entry remain pending Stage-2.",
 ]
 next_action = [
-  "Bootstrap uefi-violin Mu-Silicium platform package using verified EL1 handoff (0x200000 / X0=0x8200000), 16 GiB RAM layout, and 0xA0040000 ramoops logger.",
+  "Add PMIC button input and FAT payload delivery to uefi-violin, wire board.toml [firmware], and begin Stage-2 arm64e XNU entry bring-up.",
 ]
 evidence = []
 
@@ -192,16 +193,17 @@ procedure = [
   "Expose GOP simple framebuffer in uefi-violin reusing UEFI splash geometry, verify stride/pixel format, then test GopFramebuffer compatibility on arm64e.",
 ]
 findings = [
-  "Live panel dimensions confirmed as 3200x2136 (landscape native, portrait aspect > 1 or rotated per hardware scanout) and rsv_mem_dpu_logo resides at 0x24200000.",
+  "Stage-1A DPU probe and Stage-1B ViolinGopDxe confirmed active continuous-video scanout on RCH9 (SCENE0_RCH_EN=0x01840200, VIDEO_MOD=1, MIXER0=3200x2136): uncompressed linear framebuffer at 0x29BFF000 (inside rsv_mem_dpu_logo 0x24200000..0x34200000), stride 12800 B (3200x4), hardware format 8 (XRGB_8888 == UEFI BGRX 32bpp).",
+  "UniXNU 0.1.0 rendered its 3200x2136 (scale 3, landscape) graphical menu via ViolinGopDxe on real violin hardware with 0 asserts when rsv_mem_dpu_logo is mapped Non-Cacheable.",
 ]
 completion = [
-  "Boot logo and UniXNU UEFI menu render cleanly on panel, followed by XNU framebuffer handoff and backlight control.",
+  "Boot logo and UniXNU UEFI menu render cleanly on panel (verified in Stage-1B), followed by XNU GopFramebuffer handoff and backlight control.",
 ]
 limits = [
-  "Live GOP base address, stride, pixel format, and UEFI DPU handover state await early uefi-violin bring-up.",
+  "XNU GopFramebuffer handoff and KTZ8866A backlight control remain pending Stage-2.",
 ]
 next_action = [
-  "Confirm active bootloader framebuffer stride/base at UEFI stage before enabling GopFramebuffer.",
+  "Pass verified 0x29BFF000 3200x2136 BGRX GOP geometry through DarwinBoot to XNU GopFramebuffer.",
 ]
 evidence = []
 
