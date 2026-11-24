@@ -43,6 +43,13 @@ void violin_legacy_display_init(IOService *nub)
     (void)nub;
 }
 
+/* Stage-7F optional hook overridden strongly by XringBacklight.cpp. */
+void violin_backlight_init(IOService *nub) __attribute__((weak));
+void violin_backlight_init(IOService *nub)
+{
+    (void)nub;
+}
+
 void violin_gop_presenter_init(void);
 }
 
@@ -177,4 +184,6 @@ extern "C" void violin_gop_presenter_init(void)
     if (legacyEnabled != 0u) {
         violin_legacy_display_init(nub);
     }
+
+    violin_backlight_init(nub);
 }

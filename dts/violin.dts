@@ -41,6 +41,32 @@
 };
 
 /*
+ * Stage-7F: Expose non-secure PERI_CRG, all 6 DW APB GPIO banks, and I2C3/I2C11
+ * (dual KTZ8866A @ 0x11 backlight buses) for polled XringGpio/XringI2c/XringBacklight.
+ * Delete FDT interrupts on polled nodes per PRJ-027.
+ */
+&peri_crg {
+    status = "okay";
+};
+
+&gpio0 { status = "okay"; };
+&gpio1 { status = "okay"; };
+&gpio2 { status = "okay"; };
+&gpio3 { status = "okay"; };
+&gpio4 { status = "okay"; };
+&gpio5 { status = "okay"; };
+
+&i2c3 {
+    status = "okay";
+    /delete-property/ interrupts;
+};
+
+&i2c11 {
+    status = "okay";
+    /delete-property/ interrupts;
+};
+
+/*
  * Verified live 2026-11-24 FDT/iomem findings (OS4.0.6.0.XOTCNXM / Linux 6.18.21):
  *   - Reserved carveouts in Bank 0 include rsv_mem_zero@0 (0x0+0x200000), rsv_mem_dpu_logo@20000000
  *     (actual reg 0x24200000+0x10000000, shifted from 0x20000000 in 6.6.30 DTS), rsv_mem_teeos@35680000
