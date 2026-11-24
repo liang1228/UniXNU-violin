@@ -118,9 +118,10 @@ def make_test_apfs_seed(
     run("hdiutil", "create", "-size", "8m", "-layout", layout, "-fs", "APFS", "-volname", volname, "-type", "UDTO", str(raw))
     mnt = work / f"mnt-{volname}"
     mnt.mkdir(parents=True, exist_ok=True)
-    attach_cmd = ["hdiutil", "attach", "-nobrowse", "-owners", "off", "-plist", str(raw)]
+    attach_cmd = ["hdiutil", "attach", "-nobrowse", "-owners", "off"]
     if layout == "NONE":
-        attach_cmd[4:4] = ["-mountpoint", str(mnt)]
+        attach_cmd += ["-mountpoint", str(mnt)]
+    attach_cmd += ["-plist", str(raw)]
     attached = plistlib.loads(subprocess.check_output(attach_cmd))
     whole = next(e["dev-entry"] for e in attached["system-entities"] if re.fullmatch(r"/dev/disk\d+", e.get("dev-entry", "")))
     try:
