@@ -282,6 +282,7 @@ def main():
         "-I", str(storage_inc),
         "-I", str(tree / ".cache/xnu-work/osfmk"),
         "-I", str(common / "drivers/XringUfs"),
+        "-I", str(unixnu / "drivers/RamBlock"),
     ]
     strict_flags = base_includes + [
         "-Wall", "-Wextra", "-Werror",
@@ -294,6 +295,7 @@ def main():
     units = [
         ("IOBlockStorageDevice", late_bsd, permissive_flags, "__GLOBAL__sub_I_IOBlockStorageDevice.cpp"),
         ("XringUfsBlock", common / "drivers/XringUfs/XringUfsBlock.cpp", strict_flags, "__GLOBAL__sub_I_XringUfsBlock.cpp"),
+        ("NativeRamBlock", unixnu / "drivers/RamBlock/NativeRamBlock.cpp", permissive_flags, "__GLOBAL__sub_I_NativeRamBlock.cpp"),
         ("NativeKeyStoreEvents", unixnu / "drivers/AppleKeyStoreState/NativeKeyStoreEvents.cpp", permissive_flags, None),
         ("KeyStoreGlue", board / "drivers/ViolinStorage/KeyStoreGlue.cpp", strict_flags, None),
         ("ViolinStorageProbe", board / "drivers/ViolinStorage/ViolinStorageProbe.cpp", strict_flags, None),
@@ -343,14 +345,23 @@ def main():
     # 2. Strict 190/190 arm64e PAC diversity audit against 24A446 kernelcache
     bsd_vtable = extract_obj_vtable_divs(compiled_raw["IOBlockStorageDevice"], "__ZTV20IOBlockStorageDevice")
     ufs_vtable = extract_obj_vtable_divs(compiled_raw["XringUfsBlock"], "__ZTV13XringUfsBlock")
+    ram_vtable = extract_obj_vtable_divs(compiled_raw["NativeRamBlock"], "__ZTV14NativeRamBlock")
     bsd_divs = [d for _, _, d in bsd_vtable]
     ufs_divs = [d for _, _, d in ufs_vtable]
-    if len(bsd_divs) != 190 or len(ufs_divs) != 190:
-        raise SystemExit(f"Expected 190 vtable slots, got IOBlockStorageDevice={len(bsd_divs)} XringUfsBlock={len(ufs_divs)}")
+    ram_divs = [d for _, _, d in ram_vtable]
+    if len(bsd_divs) != 190 or len(ufs_divs) != 190 or len(ram_divs) != 190:
+        raise SystemExit(
+            f"Expected 190 vtable slots, got IOBlockStorageDevice={len(bsd_divs)} "
+            f"XringUfsBlock={len(ufs_divs)} NativeRamBlock={len(ram_divs)}"
+        )
     ufs_diffs = [(s, bsd_vtable[s][1], ufs_vtable[s][1], hex(bsd_divs[s]), hex(ufs_divs[s]))
                  for s in range(190) if bsd_divs[s] != ufs_divs[s]]
     if ufs_diffs:
         raise SystemExit(f"XringUfsBlock vs IOBlockStorageDevice PAC diversity mismatch: {ufs_diffs[:10]}")
+    ram_diffs = [(s, bsd_vtable[s][1], ram_vtable[s][1], hex(bsd_divs[s]), hex(ram_divs[s]))
+                 for s in range(190) if bsd_divs[s] != ram_divs[s]]
+    if ram_diffs:
+        raise SystemExit(f"NativeRamBlock vs IOBlockStorageDevice PAC diversity mismatch: {ram_diffs[:10]}")
 
     kc_audit = find_24a446_ioblockstoragedevice_vtable(args.kernelcache.read_bytes(), unixnu, bsd_divs)
 
@@ -368,7 +379,9 @@ def main():
         "pac_audit": {
             "ioblockstoragedevice_slots": len(bsd_divs),
             "xringufsblock_slots": len(ufs_divs),
+            "nativeramblock_slots": len(ram_divs),
             "xringufsblock_vs_base_diffs": 0,
+            "nativeramblock_vs_base_diffs": 0,
             "base_vs_24a446_diffs": 0,
             **kc_audit,
         },

@@ -1,12 +1,24 @@
 diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
-@@ -566,6 +566,27 @@
+@@ -566,6 +566,39 @@
  }
  #endif
  
 +__attribute__((weak)) void xring_ufs_ro_selftest(void) {}
 +__attribute__((weak)) void violin_gop_presenter_init(void) {}
++__attribute__((weak)) void violin_apfs_get_stats(uint64_t *ram_reads, uint64_t *ram_writes,
++    uint64_t *ram_fail, uint64_t *ram_bytes, uint64_t *ufs_wrej, uint64_t *ufs_err,
++    uint8_t seed_sha256_out[32])
++{
++	if (ram_reads)  *ram_reads  = 0ULL;
++	if (ram_writes) *ram_writes = 0ULL;
++	if (ram_fail)   *ram_fail   = 0ULL;
++	if (ram_bytes)  *ram_bytes  = 0ULL;
++	if (ufs_wrej)   *ufs_wrej   = 0ULL;
++	if (ufs_err)    *ufs_err    = 0ULL;
++	if (seed_sha256_out) memset(seed_sha256_out, 0, 32U);
++}
 +
 +static void
 +violin_stage5_watchdog_thread(void *arg, __unused wait_result_t wr)
@@ -146,3 +158,80 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
  	}
  
  	IOSecureBSDRoot(rootdevice);
+@@ -1055,6 +1178,76 @@
+ 	lck_rw_unlock_exclusive(&rootvnode_rw_lock);
+ 	init_rootvnode = NULLVP;  /* use rootvnode after this point */
+ 
++	{
++		unsigned int apfs_test = 0;
++		if (PE_parse_boot_argn("violin_apfs_test", &apfs_test, sizeof(apfs_test)) && apfs_test != 0U) {
++			extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
++			vfs_context_t ctx = vfs_context_kernel();
++			mount_t mp = rootvnode ? vnode_mount(rootvnode) : NULL;
++			struct vfsstatfs *sfs = mp ? vfs_statfs(mp) : NULL;
++			int fstype_ok = (sfs != NULL && strcmp(sfs->f_fstypename, "apfs") == 0);
++			vnode_t vp = NULLVP, vp_neg = NULLVP, vp_ro = NULLVP;
++			char hello[64];
++			memset(hello, 0, sizeof(hello));
++			int open_rc = vnode_open("/hello.txt", FREAD, 0, 0, &vp, ctx);
++			int read_rc = -1, resid = 0, got_len = 0, hello_ok = 0;
++			if (open_rc == 0 && vp != NULLVP) {
++				read_rc = vn_rdwr(UIO_READ, vp, hello, (int)(sizeof(hello) - 1U), 0,
++				    UIO_SYSSPACE, 0, vfs_context_ucred(ctx), &resid, kernproc);
++				got_len = (int)(sizeof(hello) - 1U) - resid;
++				if (read_rc == 0 && got_len == 20 && memcmp(hello, "VIOLIN_APFS_LIVE_OK\n", 20U) == 0) {
++					hello_ok = 1;
++				}
++				(void)vnode_close(vp, FREAD, ctx);
++			}
++			int enoent_rc = vnode_open("/no_such_violin_file", FREAD, 0, 0, &vp_neg, ctx);
++			if (enoent_rc == 0 && vp_neg != NULLVP) {
++				(void)vnode_close(vp_neg, FREAD, ctx);
++			}
++			int erofs_rc = vnode_open("/hello.txt", FWRITE, 0, 0, &vp_ro, ctx);
++			if (erofs_rc == 0 && vp_ro != NULLVP) {
++				(void)vnode_close(vp_ro, FWRITE, ctx);
++			}
++			int autherr = rootvnode ? VNOP_IOCTL(rootvnode, FSIOC_KERNEL_ROOTAUTH, NULL, 0, ctx) : -1;
++			uint64_t ram_reads = 0, ram_writes = 0, ram_fail = 0, ram_bytes = 0, ufs_wrej = 0, ufs_err = 0;
++			uint8_t seed_sha[32];
++			violin_apfs_get_stats(&ram_reads, &ram_writes, &ram_fail, &ram_bytes, &ufs_wrej, &ufs_err, seed_sha);
++			char hello_clean[48];
++			size_t copy_n = (got_len > 0 && got_len < (int)sizeof(hello_clean)) ? (size_t)got_len : 0U;
++			for (size_t i = 0; i < copy_n; i++) {
++				hello_clean[i] = (hello[i] == '\n' || hello[i] == '\r') ? '\0' : hello[i];
++			}
++			hello_clean[copy_n] = '\0';
++			int all_ok = fstype_ok && open_rc == 0 && read_rc == 0 && hello_ok &&
++			    enoent_rc == ENOENT && erofs_rc == EROFS && autherr != 0 &&
++			    ram_reads > 0ULL && ram_fail == 0ULL && ram_bytes == 8388608ULL && ufs_err == 0ULL;
++			kprintf("[VIOLIN_APFS_ROOT] %s: fstype=%s from=%s rdev=%s bsize=%u blocks=%llu bfree=%llu "
++			    "hello_open=%d hello_read=%d len=%d text=\"%s\" ok=%d enoent=%d erofs=%d "
++			    "rootauth_refused=%d ram_bytes=%llu ram_reads=%llu ram_writes=%llu ram_fail=%llu "
++			    "ufs_wrej=%llu ufs_err=%llu ufs_writes=0\n",
++			    all_ok ? "PASS" : "FAIL",
++			    sfs ? sfs->f_fstypename : "<null>",
++			    sfs ? sfs->f_mntfromname : "<null>",
++			    rootdevice,
++			    sfs ? (unsigned)sfs->f_bsize : 0U,
++			    sfs ? (unsigned long long)sfs->f_blocks : 0ULL,
++			    sfs ? (unsigned long long)sfs->f_bfree : 0ULL,
++			    open_rc, read_rc, got_len, hello_clean, hello_ok,
++			    enoent_rc, erofs_rc, autherr,
++			    (unsigned long long)ram_bytes,
++			    (unsigned long long)ram_reads,
++			    (unsigned long long)ram_writes,
++			    (unsigned long long)ram_fail,
++			    (unsigned long long)ufs_wrej,
++			    (unsigned long long)ufs_err);
++			printf("[VIOLIN_APFS_ROOT] %s: fstype=%s from=%s text=\"%s\" enoent=%d erofs=%d rootauth_refused=%d\n",
++			    all_ok ? "PASS" : "FAIL",
++			    sfs ? sfs->f_fstypename : "<null>",
++			    sfs ? sfs->f_mntfromname : "<null>",
++			    hello_clean, enoent_rc, erofs_rc, autherr);
++			violin_psci_reset_or_off(1U, all_ok ? "stage7h-apfs-pass" : "stage7h-apfs-fail");
++		}
++	}
++
+ 
+ 	if (!bsd_rooted_ramdisk()) {

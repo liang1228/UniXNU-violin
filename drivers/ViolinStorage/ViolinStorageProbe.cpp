@@ -36,6 +36,7 @@
 #include <libkern/c++/OSSymbol.h>
 #include <libkern/libkern.h>
 #include <pexpert/pexpert.h>
+#include <sys/param.h>
 
 #include "XringUfsBlock.h"
 
@@ -48,20 +49,55 @@ bool violin_keystore_init_and_selftest(void);
 /* Globalized deferred static constructors (__mod_init_func removed by build-violin-source-storage.py). */
 void violin_ioblockstoragedevice_static_init(void) __asm__("__GLOBAL__sub_I_IOBlockStorageDevice.cpp");
 void violin_xringufsblock_static_init(void) __asm__("__GLOBAL__sub_I_XringUfsBlock.cpp");
+void violin_nativeramblock_static_init(void) __asm__("__GLOBAL__sub_I_NativeRamBlock.cpp");
+
+/* From upstream read-only drivers/RamBlock/NativeRamBlock.cpp */
+extern volatile uint32_t native_ram_block_ready;
+extern volatile uint64_t native_ram_block_bytes;
+extern volatile uint64_t native_ram_block_reads;
+extern volatile uint64_t native_ram_block_writes;
+extern volatile uint64_t native_ram_block_failures;
+extern volatile uint64_t native_ram_block_resident_bytes;
+extern volatile uint32_t native_ram_block_sparse;
+extern uint8_t native_ram_block_seed_sha256[32];
+int native_ram_block_volume_device(const char *uuid, dev_t *device, char *path, size_t size);
 
 static const OSMetaClass *gParentBlockStorageMetaClass = nullptr;
+static bool gStorageMetaClassesRegistered = false;
 
 const OSMetaClass *native_source_storage_parent(void)
 {
     return gParentBlockStorageMetaClass;
 }
 
+/*
+ * Stage-7H strictly volatile-only bindings for NativeRamBlock weak_imports:
+ * Static arm64e XNU linking resolves all symbols; returning mode=0 guarantees
+ * NativeRamBlock NEVER attempts to open or write any persistent UFS store.
+ */
+bool ml_static_mfree_prepare(vm_offset_t, vm_size_t) { return false; }
+unsigned native_ufs_store_mode(void) { return 0u; }
+int native_ufs_store_open(uint64_t, uint64_t *, const char **why)
+{
+    if (why) *why = "disabled (Stage-7H volatile-only mode)";
+    return 0;
+}
+int native_ufs_store_read(uint64_t, uint32_t, void *) { return 0; }
+int native_ufs_store_write(uint64_t, uint32_t, const void *) { return 0; }
+int native_ufs_store_write_cached(uint64_t, uint32_t, const void *) { return 0; }
+int native_ufs_store_sync(void) { return 0; }
+unsigned native_ufs_store_gpt_check(void) { return 0xffu; }
+
 void violin_storage_init(IOService *nub);
+void violin_apfs_get_stats(uint64_t *ram_reads, uint64_t *ram_writes, uint64_t *ram_fail,
+                           uint64_t *ram_bytes, uint64_t *ufs_wrej, uint64_t *ufs_err,
+                           uint8_t seed_sha256_out[32]);
 } // extern "C"
 
 namespace {
 
 IOService *gViolinUfsBlock = nullptr;
+IOService *gViolinRamBlock = nullptr;
 
 /* Expected LUN 2 (/dev/block/sdc) partition ground truth (4096 B blocks). */
 constexpr uint64_t kBlkSize              = 4096ULL;
@@ -116,7 +152,177 @@ bool isDescendantOf(IOService *svc, IOService *ancestor)
     return false;
 }
 
+bool ensureStorageMetaClassesRegistered(const char *tag)
+{
+    if (gStorageMetaClassesRegistered) {
+        return true;
+    }
+
+    OSReturn kextRc = OSKextLoadKextWithIdentifier("com.apple.iokit.IOStorageFamily");
+    const OSSymbol *baseSym = OSSymbol::withCStringNoCopy("IOBlockStorageDevice");
+    const OSMetaClass *parentMc = baseSym ? OSMetaClass::getMetaClassWithName(baseSym) : nullptr;
+    if (baseSym) {
+        baseSym->release();
+    }
+    kprintf("[%s] IOStorageFamily load=0x%x parent_mc=%p(%s,sz=%u)\n",
+            tag,
+            static_cast<unsigned>(kextRc),
+            parentMc,
+            parentMc ? parentMc->getClassName() : "<null>",
+            parentMc ? parentMc->getClassSize() : 0u);
+    if (kextRc != kOSReturnSuccess || !parentMc) {
+        kprintf("[%s] FAIL: IOStorageFamily or IOBlockStorageDevice metaclass unavailable\n", tag);
+        return false;
+    }
+
+    gParentBlockStorageMetaClass = parentMc;
+    void *loadHandle = OSMetaClass::preModLoad("com.apple.iokit.IOStorageFamily");
+    if (!loadHandle) {
+        kprintf("[%s] FAIL: OSMetaClass::preModLoad returned NULL\n", tag);
+        return false;
+    }
+    violin_ioblockstoragedevice_static_init();
+    violin_xringufsblock_static_init();
+    violin_nativeramblock_static_init();
+    OSReturn postRc = OSMetaClass::postModLoad(loadHandle);
+    kprintf("[%s] late metaclass postModLoad rc=0x%x\n", tag, static_cast<unsigned>(postRc));
+    if (postRc != kOSReturnSuccess) {
+        kprintf("[%s] FAIL: OSMetaClass::postModLoad failed\n", tag);
+        return false;
+    }
+
+    gStorageMetaClassesRegistered = true;
+    return true;
+}
+
+void violin_ram_apfs_init(IOService *nub)
+{
+    if (gViolinRamBlock != nullptr) {
+        return;
+    }
+
+    uint32_t ramEnabled = 0u;
+    if (!PE_parse_boot_argn("violin-ram-apfs", &ramEnabled, sizeof(ramEnabled)) || ramEnabled != 1u) {
+        return;
+    }
+
+    IORegistryEntry *memMap = IORegistryEntry::fromPath("/chosen/memory-map", gIODTPlane);
+    OSData *packed = memMap ? OSDynamicCast(OSData, memMap->getProperty("PackedRAMDisk")) : nullptr;
+    if (memMap) {
+        memMap->release();
+    }
+    if (!packed || packed->getLength() != 16u) {
+        kprintf("[VIOLIN_RAM_APFS] skipped (no /chosen/memory-map/PackedRAMDisk)\n");
+        return;
+    }
+
+    if (!ensureStorageMetaClassesRegistered("VIOLIN_RAM_APFS")) {
+        return;
+    }
+
+    OSReturn apfsKextRc = OSKextLoadKextWithIdentifier("com.apple.filesystems.apfs");
+    kprintf("[VIOLIN_RAM_APFS] apfs kext load=0x%x\n", static_cast<unsigned>(apfsKextRc));
+
+    IOService *provider = nub ? nub->getProvider() : nullptr;
+    if (!provider) {
+        provider = IOService::getPlatform();
+    }
+    if (!provider) {
+        kprintf("[VIOLIN_RAM_APFS] FAIL: no provider for NativeRamBlock\n");
+        return;
+    }
+
+    OSObject *obj = OSMetaClass::allocClassWithName("NativeRamBlock");
+    IOService *ramDev = OSDynamicCast(IOService, obj);
+    if (!ramDev || !ramDev->init()) {
+        if (obj) obj->release();
+        kprintf("[VIOLIN_RAM_APFS] FAIL: NativeRamBlock allocate/init failed\n");
+        return;
+    }
+    const OSMetaClass *devMc = ramDev->getMetaClass();
+    const OSMetaClass *midMc = devMc ? devMc->getSuperClass() : nullptr;
+    const OSMetaClass *topMc = midMc ? midMc->getSuperClass() : nullptr;
+    kprintf("[VIOLIN_RAM_APFS] chain=%s -> %s -> %s (size=%u)\n",
+            devMc ? devMc->getClassName() : "?",
+            midMc ? midMc->getClassName() : "?",
+            topMc ? topMc->getClassName() : "?",
+            devMc ? devMc->getClassSize() : 0u);
+
+    if (!ramDev->attach(provider) || !ramDev->start(provider)) {
+        ramDev->detach(provider);
+        ramDev->release();
+        kprintf("[VIOLIN_RAM_APFS] FAIL: NativeRamBlock attach/start failed\n");
+        return;
+    }
+    gViolinRamBlock = ramDev;
+
+    char wantedUuid[48] = "CBCBFF9B-0404-4634-9AB9-23B4A960F959";
+    (void)PE_parse_boot_arg_str("violin-apfs-uuid", wantedUuid, sizeof(wantedUuid));
+
+    dev_t volDev = NODEV;
+    char volPath[64] = {};
+    bool found = false;
+    uint64_t deadline = 0;
+    clock_interval_to_deadline(6000u, kMillisecondScale, &deadline);
+    while (true) {
+        if (native_ram_block_volume_device(wantedUuid, &volDev, volPath, sizeof(volPath))) {
+            found = true;
+            break;
+        }
+        if (mach_absolute_time() >= deadline) {
+            break;
+        }
+        IOSleep(50u);
+    }
+
+    char shaHex[17] = {};
+    static const char kHex[] = "0123456789abcdef";
+    for (unsigned i = 0; i < 8u; i++) {
+        shaHex[i * 2u]     = kHex[(native_ram_block_seed_sha256[i] >> 4) & 0xFu];
+        shaHex[i * 2u + 1] = kHex[native_ram_block_seed_sha256[i] & 0xFu];
+    }
+    shaHex[16] = '\0';
+
+    if (!found || native_ram_block_ready != 1u || native_ram_block_failures != 0ULL) {
+        kprintf("[VIOLIN_RAM_APFS] FAIL: found=%u ready=%u sparse=%u bytes=%llu res=%llu sha=%s.. reads=%llu fail=%llu uuid=%s\n",
+                found ? 1u : 0u, native_ram_block_ready, native_ram_block_sparse,
+                static_cast<unsigned long long>(native_ram_block_bytes),
+                static_cast<unsigned long long>(native_ram_block_resident_bytes),
+                shaHex,
+                static_cast<unsigned long long>(native_ram_block_reads),
+                static_cast<unsigned long long>(native_ram_block_failures),
+                wantedUuid);
+        return;
+    }
+
+    kprintf("[VIOLIN_RAM_APFS] PASS: dev=%s maj=%u min=%u uuid=%s bytes=%llu resident=%llu sparse=%u seed_sha256=%s.. reads=%llu fail=0\n",
+            volPath,
+            static_cast<unsigned>(major(volDev)),
+            static_cast<unsigned>(minor(volDev)),
+            wantedUuid,
+            static_cast<unsigned long long>(native_ram_block_bytes),
+            static_cast<unsigned long long>(native_ram_block_resident_bytes),
+            native_ram_block_sparse,
+            shaHex,
+            static_cast<unsigned long long>(native_ram_block_reads));
+}
+
 } // namespace
+
+extern "C" void violin_apfs_get_stats(uint64_t *ram_reads, uint64_t *ram_writes, uint64_t *ram_fail,
+                                      uint64_t *ram_bytes, uint64_t *ufs_wrej, uint64_t *ufs_err,
+                                      uint8_t seed_sha256_out[32])
+{
+    if (ram_reads)  *ram_reads  = native_ram_block_reads;
+    if (ram_writes) *ram_writes = native_ram_block_writes;
+    if (ram_fail)   *ram_fail   = native_ram_block_failures;
+    if (ram_bytes)  *ram_bytes  = native_ram_block_bytes;
+    if (ufs_wrej)   *ufs_wrej   = xring_ufs_block_write_rejects;
+    if (ufs_err)    *ufs_err    = xring_ufs_block_errors;
+    if (seed_sha256_out) {
+        memcpy(seed_sha256_out, native_ram_block_seed_sha256, 32u);
+    }
+}
 
 extern "C" void violin_storage_init(IOService *nub)
 {
@@ -124,95 +330,65 @@ extern "C" void violin_storage_init(IOService *nub)
     (void)violin_keystore_init_and_selftest();
 
     /* Phase B: Strictly Read-Only XringUfsBlock -> IOStorageFamily -> IOMedia (live violin). */
-    if (gViolinUfsBlock != nullptr) {
-        return;
-    }
-
-    uint32_t blkEnabled = 0u;
-    if (!PE_parse_boot_argn("xring-ufs-blk", &blkEnabled, sizeof(blkEnabled)) || blkEnabled != 1u) {
-        return;
-    }
-
-    IORegistryEntry *ufshcEntry = IORegistryEntry::fromPath("/arm-io/ufshc", gIODTPlane);
-    if (!ufshcEntry) {
-        kprintf("[XRING_UFS_BLK] skipped (no /arm-io/ufshc in ADT)\n");
-        return;
-    }
-    IOService *provider = OSDynamicCast(IOService, ufshcEntry);
-    if (!provider) {
-        ufshcEntry->release();
-        provider = nub ? nub->getProvider() : IOService::getPlatform();
-        if (provider) {
-            provider->retain();
+    do {
+        if (gViolinUfsBlock != nullptr) {
+            break;
         }
-    }
-    if (!provider) {
-        kprintf("[XRING_UFS_BLK] FAIL: no valid provider for XringUfsBlock\n");
-        return;
-    }
 
-    /* 1. Ensure closed-source com.apple.iokit.IOStorageFamily is loaded. */
-    OSReturn kextRc = OSKextLoadKextWithIdentifier("com.apple.iokit.IOStorageFamily");
-    const OSSymbol *baseSym = OSSymbol::withCStringNoCopy("IOBlockStorageDevice");
-    const OSMetaClass *parentMc = baseSym ? OSMetaClass::getMetaClassWithName(baseSym) : nullptr;
-    if (baseSym) {
-        baseSym->release();
-    }
-    kprintf("[XRING_UFS_BLK] IOStorageFamily load=0x%x parent_mc=%p(%s,sz=%u)\n",
-            static_cast<unsigned>(kextRc),
-            parentMc,
-            parentMc ? parentMc->getClassName() : "<null>",
-            parentMc ? parentMc->getClassSize() : 0u);
-    if (kextRc != kOSReturnSuccess || !parentMc) {
-        provider->release();
-        kprintf("[XRING_UFS_BLK] FAIL: IOStorageFamily or IOBlockStorageDevice metaclass unavailable\n");
-        return;
-    }
+        uint32_t blkEnabled = 0u;
+        if (!PE_parse_boot_argn("xring-ufs-blk", &blkEnabled, sizeof(blkEnabled)) || blkEnabled != 1u) {
+            break;
+        }
 
-    /* 2. Late-register UniXNUBlockStorageDevice -> XringUfsBlock below closed-source IOBlockStorageDevice. */
-    gParentBlockStorageMetaClass = parentMc;
-    void *loadHandle = OSMetaClass::preModLoad("com.apple.iokit.IOStorageFamily");
-    if (!loadHandle) {
-        provider->release();
-        kprintf("[XRING_UFS_BLK] FAIL: OSMetaClass::preModLoad returned NULL\n");
-        return;
-    }
-    violin_ioblockstoragedevice_static_init();
-    violin_xringufsblock_static_init();
-    OSReturn postRc = OSMetaClass::postModLoad(loadHandle);
-    kprintf("[XRING_UFS_BLK] late metaclass postModLoad rc=0x%x\n", static_cast<unsigned>(postRc));
-    if (postRc != kOSReturnSuccess) {
-        provider->release();
-        kprintf("[XRING_UFS_BLK] FAIL: OSMetaClass::postModLoad failed\n");
-        return;
-    }
+        IORegistryEntry *ufshcEntry = IORegistryEntry::fromPath("/arm-io/ufshc", gIODTPlane);
+        if (!ufshcEntry) {
+            kprintf("[XRING_UFS_BLK] skipped (no /arm-io/ufshc in ADT)\n");
+            break;
+        }
+        IOService *provider = OSDynamicCast(IOService, ufshcEntry);
+        if (!provider) {
+            ufshcEntry->release();
+            provider = nub ? nub->getProvider() : IOService::getPlatform();
+            if (provider) {
+                provider->retain();
+            }
+        }
+        if (!provider) {
+            kprintf("[XRING_UFS_BLK] FAIL: no valid provider for XringUfsBlock\n");
+            break;
+        }
 
-    /* 3. Instantiate, attach, and start XringUfsBlock (triggers IOBlockStorageDriver + IOGUIDPartitionScheme). */
-    IOService *ufsDev = xring_ufs_block_allocate();
-    if (!ufsDev || !ufsDev->init()) {
-        if (ufsDev) ufsDev->release();
-        provider->release();
-        kprintf("[XRING_UFS_BLK] FAIL: XringUfsBlock allocate/init failed\n");
-        return;
-    }
-    const OSMetaClass *devMc = ufsDev->getMetaClass();
-    const OSMetaClass *midMc = devMc ? devMc->getSuperClass() : nullptr;
-    const OSMetaClass *topMc = midMc ? midMc->getSuperClass() : nullptr;
-    kprintf("[XRING_UFS_BLK] chain=%s -> %s -> %s (size=%u)\n",
-            devMc ? devMc->getClassName() : "?",
-            midMc ? midMc->getClassName() : "?",
-            topMc ? topMc->getClassName() : "?",
-            devMc ? devMc->getClassSize() : 0u);
+        if (!ensureStorageMetaClassesRegistered("XRING_UFS_BLK")) {
+            provider->release();
+            break;
+        }
 
-    if (!ufsDev->attach(provider) || !ufsDev->start(provider)) {
-        ufsDev->detach(provider);
-        ufsDev->release();
+        /* Instantiate, attach, and start XringUfsBlock (triggers IOBlockStorageDriver + IOGUIDPartitionScheme). */
+        IOService *ufsDev = xring_ufs_block_allocate();
+        if (!ufsDev || !ufsDev->init()) {
+            if (ufsDev) ufsDev->release();
+            provider->release();
+            kprintf("[XRING_UFS_BLK] FAIL: XringUfsBlock allocate/init failed\n");
+            break;
+        }
+        const OSMetaClass *devMc = ufsDev->getMetaClass();
+        const OSMetaClass *midMc = devMc ? devMc->getSuperClass() : nullptr;
+        const OSMetaClass *topMc = midMc ? midMc->getSuperClass() : nullptr;
+        kprintf("[XRING_UFS_BLK] chain=%s -> %s -> %s (size=%u)\n",
+                devMc ? devMc->getClassName() : "?",
+                midMc ? midMc->getClassName() : "?",
+                topMc ? topMc->getClassName() : "?",
+                devMc ? devMc->getClassSize() : 0u);
+
+        if (!ufsDev->attach(provider) || !ufsDev->start(provider)) {
+            ufsDev->detach(provider);
+            ufsDev->release();
+            provider->release();
+            kprintf("[XRING_UFS_BLK] FAIL: XringUfsBlock attach/start failed\n");
+            break;
+        }
         provider->release();
-        kprintf("[XRING_UFS_BLK] FAIL: XringUfsBlock attach/start failed\n");
-        return;
-    }
-    provider->release();
-    gViolinUfsBlock = ufsDev;
+        gViolinUfsBlock = ufsDev;
 
     /* 4. Negative check #1: direct write request to XringUfsBlock MUST fail with kIOReturnNotWritable. */
     int writeRejRc = xring_ufs_block_test_write_reject(ufsDev);
@@ -239,7 +415,7 @@ extern "C" void violin_storage_init(IOService *nub)
     uint32_t childPartitions = 0;
 
     uint64_t deadline = 0;
-    clock_interval_to_deadline(3000u, kMillisecondScale, &deadline);
+    clock_interval_to_deadline(6000u, kMillisecondScale, &deadline);
     while (true) {
         wholeFound = userFound = bootAFound = bootBFound = false;
         childPartitions = 0;
@@ -374,21 +550,25 @@ extern "C" void violin_storage_init(IOService *nub)
                  bootBFound && !bootBWritable && bootBBase == kExpectedBootBBase && bootBSize == kExpectedBootBSize &&
                  rwOpenRefused && mediaReadOk && (xring_ufs_block_errors == 0ULL);
 
-    if (!allOk) {
-        kprintf("[XRING_UFS_BLK] FAIL: dir_wr_rej=%u(0x%x) whole=%u parts=%u user=%u bootA=%u bootB=%u rw_ref=%u rd_ok=%u reads=%llu blks=%llu w_rej=%llu err=%llu\n",
-                directWriteRejected ? 1u : 0u, static_cast<unsigned>(writeRejRc),
-                wholeFound ? 1u : 0u, childPartitions, userFound ? 1u : 0u, bootAFound ? 1u : 0u, bootBFound ? 1u : 0u,
-                rwOpenRefused ? 1u : 0u, mediaReadOk ? 1u : 0u,
+        if (!allOk) {
+            kprintf("[XRING_UFS_BLK] FAIL: dir_wr_rej=%u(0x%x) whole=%u parts=%u user=%u bootA=%u bootB=%u rw_ref=%u rd_ok=%u reads=%llu blks=%llu w_rej=%llu err=%llu\n",
+                    directWriteRejected ? 1u : 0u, static_cast<unsigned>(writeRejRc),
+                    wholeFound ? 1u : 0u, childPartitions, userFound ? 1u : 0u, bootAFound ? 1u : 0u, bootBFound ? 1u : 0u,
+                    rwOpenRefused ? 1u : 0u, mediaReadOk ? 1u : 0u,
+                    static_cast<unsigned long long>(xring_ufs_block_reads),
+                    static_cast<unsigned long long>(xring_ufs_block_read_blocks),
+                    static_cast<unsigned long long>(xring_ufs_block_write_rejects),
+                    static_cast<unsigned long long>(xring_ufs_block_errors));
+            break;
+        }
+
+        kprintf("[XRING_UFS_BLK] PASS: whole=%s(528GB,ro) parts=%u userdata=%s boot_a=%s(ANDROID!v%u,%u) reads=%llu blks=%llu w_rej=%llu rw_ref=1 err=0\n",
+                wholeBsd, childPartitions, userBsd, bootABsd, bootHdrVer, bootKernelSz,
                 static_cast<unsigned long long>(xring_ufs_block_reads),
                 static_cast<unsigned long long>(xring_ufs_block_read_blocks),
-                static_cast<unsigned long long>(xring_ufs_block_write_rejects),
-                static_cast<unsigned long long>(xring_ufs_block_errors));
-        return;
-    }
+                static_cast<unsigned long long>(xring_ufs_block_write_rejects));
+    } while (false);
 
-    kprintf("[XRING_UFS_BLK] PASS: whole=%s(528GB,ro) parts=%u userdata=%s boot_a=%s(ANDROID!v%u,%u) reads=%llu blks=%llu w_rej=%llu rw_ref=1 err=0\n",
-            wholeBsd, childPartitions, userBsd, bootABsd, bootHdrVer, bootKernelSz,
-            static_cast<unsigned long long>(xring_ufs_block_reads),
-            static_cast<unsigned long long>(xring_ufs_block_read_blocks),
-            static_cast<unsigned long long>(xring_ufs_block_write_rejects));
+    /* Phase C: Zero-UFS-Write NativeRamBlock (DBRDISK1) -> APFS volume discovery (QEMU + live). */
+    violin_ram_apfs_init(nub);
 }
