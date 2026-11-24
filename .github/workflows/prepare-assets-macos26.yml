@@ -1,0 +1,86 @@
+name: prepare-assets-macos26
+
+# One-time compact APFS seed & metadata prep on macos-26 for Xiaomi Pad 7S Pro (violin).
+# IMPORTANT: Run ONLY in a PRIVATE repository. Never uploads Apple .dmg/.aea images;
+# uploads only compact DBRDISK1 APFS seeds, trustcaches, and SHA-256 verification JSON
+# with retention-days: 1 (to be deleted immediately after local download).
+
+on:
+  workflow_dispatch:
+    inputs:
+      verify_systemos:
+        description: "Also verify Cryptex1,SystemOS raw SHA-256 (adds ~2.2 GiB transient download)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-assets-macos26-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+
+jobs:
+  prepare-assets:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out board repository
+        uses: actions/checkout@v4
+        with:
+          path: device
+          persist-credentials: false
+
+      - name: Check out pinned UniXNU (with DarwinBoot submodule)
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: 8542980d02b4d2cc5c32ee3542de1760b2562aac
+          path: UniXNU
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Init DarwinBoot submodule for packed_ramdisk.py
+        working-directory: UniXNU
+        run: git submodule update --init --depth 1 drivers/DarwinBoot
+
+      - name: Install blacktop/tap/ipsw
+        run: |
+          brew install blacktop/tap/ipsw
+          sw_vers
+          uname -m
+          python3 --version
+          ipsw --version
+          command -v /usr/bin/aea hdiutil diskutil
+          df -h "$RUNNER_TEMP"
+
+      - name: Prepare compact 24A446 APFS seeds and verify raw images
+        run: |
+          extra=()
+          if [ "${{ inputs.verify_systemos }}" = "true" ]; then
+            extra+=(--verify-systemos)
+          fi
+          python3 device/scripts/ci/prepare-assets-macos26.py \
+            --unixnu "$GITHUB_WORKSPACE/UniXNU" \
+            --work "$RUNNER_TEMP/work" \
+            --out "$RUNNER_TEMP/assets-24A446" \
+            "${extra[@]}"
+          ls -lh "$RUNNER_TEMP/assets-24A446"
+          cat "$RUNNER_TEMP/assets-24A446/macos26-assets-manifest.json"
+
+      - name: Upload compact private artifact (retention 1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: violin-macos26-assets-24A446
+          retention-days: 1
+          if-no-files-found: error
+          path: ${{ runner.temp }}/assets-24A446/*
