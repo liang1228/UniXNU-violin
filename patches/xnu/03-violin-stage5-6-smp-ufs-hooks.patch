@@ -1,10 +1,13 @@
 diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 --- a/bsd/kern/bsd_init.c
 +++ b/bsd/kern/bsd_init.c
-@@ -566,6 +566,24 @@
+@@ -566,6 +566,27 @@
  }
  #endif
  
++__attribute__((weak)) void xring_ufs_ro_selftest(void) {}
++__attribute__((weak)) void violin_gop_presenter_init(void) {}
++
 +static void
 +violin_stage5_watchdog_thread(void *arg, __unused wait_result_t wr)
 +{
@@ -15,8 +18,8 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 +	IOSleep(sec * 1000U);
 +	extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
 +	extern volatile uint32_t armcpu_smp_running;
-+	extern volatile uint32_t armcpu_core_timer[8];
-+	extern volatile uint32_t armcpu_core_sgi[8];
++	extern volatile uint32_t armcpu_core_timer[16];
++	extern volatile uint32_t armcpu_core_sgi[16];
 +	kprintf("[XNU_STAGE5_WATCHDOG] TIMEOUT after %us (smp_running=%u timer0=%u sgi0=%u)\n",
 +	    sec, armcpu_smp_running, armcpu_core_timer[0], armcpu_core_sgi[0]);
 +	violin_psci_reset_or_off(1U, "stage5-watchdog");
@@ -26,7 +29,7 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
  void
  bsd_init(void)
  {
-@@ -1001,7 +1019,100 @@
+@@ -1001,7 +1022,102 @@
  	bsd_init_kprintf("calling inittodr\n");
  	inittodr(0);
  
@@ -72,17 +75,17 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 +				extern volatile uint32_t armcpu_gic_ready;
 +				extern volatile uint32_t armcpu_smp_running;
 +				extern volatile uint32_t armcpu_smp_conduit;
-+				extern volatile uint32_t armcpu_smp_step[8];
-+				extern volatile uint32_t armcpu_smp_mpidr[8];
-+				extern volatile uint32_t armcpu_smp_fail[8];
-+				extern volatile int32_t armcpu_smp_psci_rc[8];
-+				extern volatile uint32_t armcpu_core_timer[8];
-+				extern volatile uint32_t armcpu_core_sgi[8];
++				extern volatile uint32_t armcpu_smp_step[16];
++				extern volatile uint32_t armcpu_smp_mpidr[16];
++				extern volatile uint32_t armcpu_smp_fail[16];
++				extern volatile int32_t armcpu_smp_psci_rc[16];
++				extern volatile uint32_t armcpu_core_timer[16];
++				extern volatile uint32_t armcpu_core_sgi[16];
 +				extern void armcpu_ipi_selftest(uint64_t aff);
 +				extern unsigned armcpu_stats_row(unsigned index, char *row, unsigned size);
 +				uint32_t max_id = (uint32_t)ml_get_max_cpu_number();
-+				if (max_id > 7U) { max_id = 7U; }
-+				for (unsigned int w = 0; w < 30U && armcpu_smp_running < max_id; w++) {
++				if (max_id > 15U) { max_id = 15U; }
++				for (unsigned int w = 0; w < 60U && armcpu_smp_running < max_id; w++) {
 +					IOSleep(50);
 +				}
 +				for (uint32_t c = 1U; c <= max_id; c++) {
@@ -118,6 +121,8 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
 +			{
 +				extern void xring_ufs_ro_selftest(void);
 +				xring_ufs_ro_selftest();
++				extern void violin_gop_presenter_init(void);
++				violin_gop_presenter_init();
 +			}
 +		}
 +	}
@@ -127,7 +132,7 @@ diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
  	while (TRUE) {
  		int err;
  
-@@ -1030,6 +1141,13 @@
+@@ -1030,6 +1146,13 @@
  		}
  #endif
  		printf("cannot mount root, errno = %d\n", err);

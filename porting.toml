@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0..6 boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk (31.96 MiB -> 100 MiB), prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU (xnu-12377.121.6, XNU_NATIVE_PAN=1, XNU_SOURCE_MOCKFS=1, FIPS HMAC sealed), 2-module StaticTrustCache, corecrypto v27.0 19/19 FIPS POST (55 ms), AppleImage4/AMFI/Sandbox/APFS v3288.2.1, XRING O1 GIC-700 (GICv4.1, stride=0x40000, ctl=0x10->0x12) + PSCI SMC 8/8-core SMP (cpu0..1 A520 + cpu2..7 A725, step=7, psci_rc=0, fail=0, inter-core SGI 0 IPIs across all 8 cores), live read-only XringUfs UFSHCI 4.0 Legacy SDB driver inside arm64e XNU (DME_GET HS-G5 Rate B 2x2, 64-bit >4GiB non-coherent DMA, NOP, LUN 0..3 INQUIRY/READ CAPACITY(16), LUN 2 LBA 0 PMBR, LBA 1 EFI PART 4 KiB SHA-256 byte-exact match to Android b23eed7e..., 12 KiB multi-block 80 GPT entries userdata=3138056..129089527, boot_a ANDROID! v4 header), mockfs md0 root mount, and signed arm64e EL0 PID 1 (/sbin/launchd, pac=ok, simd32=ok) -> SYS_reboot -> PSCI_SYSTEM_RESET(smc); IOBlockStorageDevice APFS root mount, persistent UFS writes, GopFramebuffer display, cores 8..9 (X925), and iPadOS 27 GUI/userland boot remain pending Stage-7."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24..25 Stage-0..7C boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk, zero-write peripheral inventory (FF-A v1.0, PERI_CRG I2C3/10/11/12 active, LPIS_ACTRL +0x4C0/+0x4C4=0, all 6 DW GPIO banks 0 traps, I2C3 KTZ8866A@0x11, LPIS_CRG security fence), prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU (xnu-12377.121.6, MAX_CPUS=10, XNU_NATIVE_PAN=1, XNU_SOURCE_MOCKFS=1, FIPS HMAC sealed), 2-module StaticTrustCache, corecrypto v27.0 19/19 FIPS POST, AppleImage4/AMFI/Sandbox/APFS v3288.2.1, XRING O1 GIC-700 + PSCI SMC 10/10-core SMP (2x A520 + 6x A725 + 2x Cortex-X925 cpu8..9, all step=7, psci_rc=0, fail=0, inter-core SGI 0 IPIs across all 10 cores), read-only XringUfs UFSHCI 4.0 Legacy SDB driver (HS-G5 Rate B 2x2, >4GiB 64-bit DMA, LUN 2 GPT 4 KiB SHA-256 byte-exact match to Android b23eed7e...), live NativeGOPPresenter 3200x2136 BGRX8888 EL0 present + 6-point scanout readback (38.384 ms = 712.3 MB/s via iOS 27 mach_msg2_trap -47), signed arm64e EL0 PID 1 (/sbin/launchd, ncpu=10, pac=ok, simd32=ok) -> SYS_reboot -> PSCI_SYSTEM_RESET(smc), and Wave 2A enrich-fileset-map.py achieving 0 extra stubs beyond upstream prelink-regression.json across both 18-kext and 28-kext (+IOSurface/+IOMobileGraphicsFamily) closures (QEMU -smp 10 gate PASS); NativeLegacyDisplay Phase-7B, IOBlockStorageDevice APFS root mount, persistent UFS writes, USB-NCM/backlight/touch drivers, and iPadOS 27 GUI userland remain pending subsequent Stage-7 waves."
 
 [[area]]
 id = "configuration"
@@ -106,15 +106,16 @@ findings = [
   "Live Linux /sys/firmware/fdt omits timebase-frequency under /cpus (Linux reads CNTFRQ_EL0 directly), whereas UniXNU devicetree.py requires timebase-frequency = <38400000> in DTS.",
   "Stage-4 live boot_b run verified XRING O1 GIC-700 (GICv4.1, stride=0x40000, typer=0x7f041e, iidr=0x403043b) ArmCpu bring-up on boot cpu0: ArmGicV3Dxe ExitBootServices clears GICD_CTLR EnableGrp1NS (0x12->0x10); soc-level ArmCpu restores 0x10->0x12 from NS EL1, clears stale NS PPIs, enables PPI 27 + SGI 0 (splitEoi=0, isenabler0=0x8000001, pmr=0xf0, igrpen1=0x1, sre=0x7), and delivers real 38.4 MHz virtual timer interrupts waking IOSleep(200) (armcpu_reg=1 gic_ready=1 timer_irqs=4 delta_200ms=3).",
   "Stage-5 live boot_b run verified XRING O1 8/8-core SMP bring-up (cpus=8 smp=1 armcpu-self-ipi=1, 2x Cortex-A520 cpu0..1 + 6x Cortex-A725 cpu2..7, MPIDR 0x0..0x700) via PSCI 1.1 SMC (conduit=1, all psci_rc=0, step=7, fail=0) after porting the start.s MPIDR_EL1 & 0xFFFF mask (01-xring-o1-smp-mpidr-mask.patch), with real inter-core GIC-700 SGI 0 IPIs delivered to all 8 cores (sgi=1/6/2/2/2/2/2/2, taken=19) and EL0 HW_NCPU=8 / HW_AVAILCPU=8.",
+  "Stage-7C Wave 1C live boot_b runs verified full 10/10-core XRING O1 SMP bring-up (02-xring-o1-max-cpus-10.patch raising BCM2837 MAX_CPUS 8->10 with MAX_CPU_CLUSTERS=2 / CLUSTER_TYPE_SMP, ArmCpu.cpp widened to 16 slots / mask 15U / kIpiSpiBase=1000, fresh Full-LTO RELEASE reference, QEMU -smp 10 gate PASS) via staged cpus=9 (44,051 B) -> cpus=10 (44,310 B, SHA-256 9c9e4323...): both Cortex-X925 cores (cpu8 mpidr=0x800, cpu9 mpidr=0x900) booted directly via PSCI SMC (psci_rc=0, step=7, fail=0, GICR frames 8..9 awake, sgi=2 each), EL0 reported ncpu=10 availcpu=10 pac=ok simd32=ok, and 10-core zalloc overhead was only +14 wired pages (235,008 free pages remaining).",
 ]
 completion = [
   "Every enabled CPU reaches XNU entry with functional EL1 PAC key writes, generic timer ticks, and GICv3 IPI delivery.",
 ]
 limits = [
-  "Cores 0..7 (MAX_CPUS=8 under BCM2837) are verified live with PSCI SMC bring-up and inter-core SGI 0 IPIs; cores 8..9 (Cortex-X925) require raising MAX_CPUS > 8 and re-auditing binary prelinked kext ABI.",
+  "All 10 cores (cpu0..9 incl. Cortex-X925 cpu8..9) are verified live under short-window SMP bring-up (20s watchdog); long-term sustained 10-core thermal/DVFS stability without xr_cpufreq/tsensor and asymmetric E/P cluster scheduling remain unverified.",
 ]
 next_action = [
-  "Evaluate MAX_CPUS=10 ABI compatibility for Cortex-X925 cores 8..9 and validate multi-core CPU load / timer tick distribution under active user workloads.",
+  "Keep unified CLUSTER_TYPE_SMP across all 10 cores and add thermal/DVFS monitoring before sustained multi-core userland workloads.",
 ]
 evidence = []
 
@@ -189,30 +190,32 @@ evidence = []
 [[area]]
 id = "display"
 status = "planned"
-components = []
-paths = ["dts/**", "proprietary-files.txt"]
+components = ["GopFramebuffer"]
+paths = ["dts/**", "proprietary-files.txt", "drivers/ViolinGopProbe/**", "scripts/build-violin-gop-presenter.py", "scripts/build-violin-stage7-el0-gop.py"]
 inputs = [
   "Live panel: card0-DSI-1 connected/enabled, modes 3200x2136 @ 144/120/90/60/50/48/30 Hz, dsi_panel_o81a_0a_dualdsi_dsc_lcd_video.",
   "Live DPU/backlight: dpu@e7000000 (0x5a000), rsv_mem_dpu_logo 0x24200000 (256 MiB), panel0-backlight (max_brightness=4095) with ktz8866a@11 on i2c@ec103000 and i2c@ec10b000.",
 ]
 configuration = [
-  "No display or GOP component is included in board.toml yet.",
+  "ViolinGopProbe.cpp + upstream GopFramebuffer/NativeGOPPresenter.cpp (compiled read-only via build-violin-gop-presenter.py and linked via XNU_EXTRA_LD_ARCHIVES) dynamically publish display-subsystem nub from PE_current_console() under violin-gop-presenter=1.",
 ]
 procedure = [
-  "Expose GOP simple framebuffer in uefi-violin reusing UEFI splash geometry, verify stride/pixel format, then test GopFramebuffer compatibility on arm64e.",
+  "Expose GOP simple framebuffer in uefi-violin reusing UEFI splash geometry, verify NativeGOPPresenter Phase-7A in QEMU and live violin boot_b, then advance to 28-kext NativeLegacyDisplay Phase-7B and KTZ8866A backlight.",
 ]
 findings = [
   "Stage-1A DPU probe and Stage-1B ViolinGopDxe confirmed active continuous-video scanout on RCH9 (SCENE0_RCH_EN=0x01840200, VIDEO_MOD=1, MIXER0=3200x2136): uncompressed linear framebuffer at 0x29BFF000 (inside rsv_mem_dpu_logo 0x24200000..0x34200000), stride 12800 B (3200x4), hardware format 8 (XRGB_8888 == UEFI BGRX 32bpp).",
   "UniXNU 0.1.0 rendered its 3200x2136 (scale 3, landscape) graphical menu via ViolinGopDxe on real violin hardware with 0 asserts when rsv_mem_dpu_logo is mapped Non-Cacheable.",
+  "Stage-7A live peripheral probe confirmed PERI_CRG I2C3/I2C11 clocks and resets are active at handoff, I2C3/I2C11 pins are muxed to Func 1, and I2C3 @ 0xEC103000 retains IC_TAR=0x11 (KTZ8866A) with 400 kHz timing (IC_FS_HCNT=0x58, IC_FS_LCNT=0xa4) and 0 traps.",
+  "Stage-7B Wave 1B passed upstream GopFramebuffer host tests (request-state.c, check-fence-wait.py), QEMU gate (1280x800, present_us=17857, readback=ok), and live violin boot_b (44,073 B byte-identical ramoops 9fb36964...): ViolinGopProbe + NativeGOPPresenter exposed 0x29BFF000 (dot-pitch=308) and signed arm64e EL0 PID 1 presented a 3200x2136 BGRX8888 4-quadrant pattern via iOS 27 mach_msg2_trap (-47) + thread_get_special_reply_port (-50) in 38.384 ms (712.3 MB/s) with 6/6 exact scanout pixel readback.",
 ]
 completion = [
-  "Boot logo and UniXNU UEFI menu render cleanly on panel (verified in Stage-1B), followed by XNU GopFramebuffer handoff and backlight control.",
+  "Boot logo, UniXNU UEFI menu, and NativeGOPPresenter Phase-7A 3200x2136 EL0 scanout verified live; NativeLegacyDisplay Phase-7B (IOMobileGraphicsFamily/IOSurface) and KTZ8866A backlight remain for full iPadOS/macOS WindowServer bring-up.",
 ]
 limits = [
-  "XNU GopFramebuffer handoff and KTZ8866A backlight control remain pending Stage-2.",
+  "Closed-source IOMobileGraphicsFamily + NativeLegacyDisplay Phase-7B runtime bring-up and KTZ8866A I2C3/I2C11 backlight dimming remain pending Wave 2B.",
 ]
 next_action = [
-  "Pass verified 0x29BFF000 3200x2136 BGRX GOP geometry through DarwinBoot to XNU GopFramebuffer.",
+  "Bring up 28-kext NativeLegacyDisplay Phase-7B on the zero-extra-stub Wave 2A prelink base and add KTZ8866A I2C3/I2C11 brightness control.",
 ]
 evidence = []
 
@@ -408,6 +411,7 @@ procedure = [
 findings = [
   "Live vendor_boot_a matches UniXNU vendor_boot.py v4 (page_size=4096, header_size=2128, AVBf footer) within a 100,663,296 B partition; boot_a has ramdisk_size=0.",
   "Stage-4 proved native Linux Full-LTO RELEASE reference building (clang-21 + ld64.lld-21 + ld64-956.6) plus auditable enrich-fileset-map.py feeding emit_prelink.py --fileset-map (15,712/21,792 matched, unresolved=1, stubbed=76, 0 runtime unmapped calls), com.apple.kernel cpusubtype 0xc0000002 alignment, FIPS HMAC sealing (UNIXNU_XNU_ARCH=arm64e), and VNPDISK2 LZ4 single-partition boot_b packaging (35.95 MiB <= 96 MiB) with 0 upstream UniXNU modifications.",
+  "Stage-7D Wave 2A upgraded enrich-fileset-map.py with generalizable Pass V (matched-__ZTV PAC vtable slot/diversity), Pass C2 (pre-new C2/D2 pairs), and Pass F (two-tier local TU window + ARM64 machine-word signature): both the 18-kext storage/security closure and the 28-kext (+IOSurface/+IOMobileGraphicsFamily) display closure dropped from 81 to 7 total stubs with 0 extra stub entries beyond upstream prelink-regression.json (apfs=0, AMFI=0, sandbox=0, IOStorageFamily=0, AppleImage4=0, ApplePMGR=0, IOSurface=0, IOMobileGraphicsFamily=0, IOAVFamily=0, AppleM2ScalerCSCDriver=0); the 18-kext Wave 2A sealed kernel passed QEMU -smp 10 -m 6G gate (QEMU_RC=0, online=10/10, EL0_INIT + EL0_GOP PASS).",
 ]
 completion = [
   "Full kernel, prelink, payload.img, and boot.img/vendor_boot.img build cleanly from scripts/package.sh with verified hashes.",
