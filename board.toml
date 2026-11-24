@@ -28,6 +28,7 @@ archives = [
   "component:ArmDTPlatform",
   "component:ArmCpu",
   "build-libpthread-kernel.py",
+  "build-mockfs-fixture.py",
 ]
 
 [firmware]

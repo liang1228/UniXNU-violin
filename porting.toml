@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0..4 boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk (31.94 MiB -> 100 MiB), and prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU (xnu-12377.121.6, FIPS HMAC sealed) + real StaticTrustCache (3,547 entries) through corecrypto v27.0 19/19 FIPS POST (55 ms) -> AppleImage4 v7.0.0 -> AMFI -> Sandbox -> vnguard -> StaticTrustCache -> XRING O1 GIC-700 (GICv4.1, stride=0x40000, iidr=0x403043b, GICD_CTLR 0x10->0x12) ArmCpu + 38.4 MHz virtual timer interrupts -> MAC/DLIL/Skywalk/lo0/Zlib/APFS v3288.2.1 -> bsd_init() pre-setconf/vfs_mountroot PASS (armcpu_reg=1 gic_ready=1 timer_irqs=4 delta_200ms=3) -> PSCI_SYSTEM_RESET; xring,ufs block driver, root APFS mount, launchd, SMP, and OS userland boot remain pending Stage-5."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 Stage-0..5 boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input (UniXNU input=yes), VNPDISK2 LZ4 FAT32 payload disk (31.95 MiB -> 100 MiB), prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU (xnu-12377.121.6, XNU_NATIVE_PAN=1, XNU_SOURCE_MOCKFS=1, FIPS HMAC sealed), 2-module StaticTrustCache (official 3,547 entries + Linux-signed 4 KiB-paged arm64e /sbin/launchd), corecrypto v27.0 19/19 FIPS POST (55 ms), AppleImage4/AMFI/Sandbox/APFS v3288.2.1, XRING O1 GIC-700 (GICv4.1, stride=0x40000, ctl=0x10->0x12) + PSCI SMC 8/8-core SMP (cpu0..1 A520 + cpu2..7 A725, step=7, psci_rc=0, fail=0, inter-core SGI 0 IPIs across all 8 cores, taken=19), mockfs md0 root mount, and first real signed arm64e EL0 PID 1 (/sbin/launchd) executing Darwin syscalls, EL0 hardware PAC (pac=ok(0xbc6afc0100001020)), 32-register SIMD syscall preservation (simd32=ok), /dev/console output, and SYS_reboot -> PSCI_SYSTEM_RESET(smc); xring,ufs block driver, real APFS root mount, cores 8..9 (X925), and iPadOS 27 GUI/userland boot remain pending Stage-6."
 
 [[area]]
 id = "configuration"
@@ -69,15 +69,16 @@ findings = [
   "Stage-2A/2B live boot_b runs verified SPMI Ch1 (0xE00011B0/0xE00011A0, non-secure while Ch0/0x800+ are TrustZone-firewalled) read-only polling of PMIC SID 0xF TOP_REG_PCTRL_STATUS3 (0x0E04 = 0x39 idle, active-LOW Vol-/Vol+/Power), ViolinPmicKeyDxe (SimpleTextIn/Ex + ConsoleInDevice + DevicePath -> UniXNU input=yes, QEMU Down/Up/Enter key-nav verified), BootShim VNPDISK1 FAT16 payload disk (0x100800000 -> ViolinPayloadDiskDxe -> EnhancedFatDxe -> \\EFI\\UniXNU\\unixnu.toml), and full DarwinBoot -> ExitBootServices() -> arm64e (0x80000002) Mach-O stub entry passing 10/10 ABI + PAC checks with 28,336 B unbroken dual-ring ramoops.",
   "Stage-3 live boot_b run verified BootShim 84 MiB PAYLOAD_MAX_SIZE + 40 MiB FAT32 VNPDISK1 payload disk + ViolinUEFI-Stage3 (4 GiB Bank 1) + DarwinBoot handoff (pa 0x103004000, entry 0x10353A488, window 512 MiB, FB 0x29BFF000 3200x2136) into real FIPS-HMAC-sealed arm64e XNU xnu-12377.121.6 (--skip-prelink), reaching start_first_cpu (PA) -> PAC+MMU -> serial_init (wcomb ramoops) -> initialize_screen -> arm_init (38.4 MHz) -> pmap_startup (19.7 ms) -> zone_init -> corecrypto 19/19 FIPS POST (191 ms) -> ArmDTPlatform/IONVRAM -> vnguard -> expected kern_trustcache.c:592 (image4 interface not available) -> PSCI_SYSTEM_RESET(smc) with byte-identical 34,279 B dual-ring ramoops and verified stock boot_b/boot_a SHA-256 restore.",
   "Stage-4 live boot_b run verified ViolinUEFI-Stage4 VNPDISK2 LZ4 frame decompression (0x1FF0E00 -> 0x6400000 at 0x1F9800000) + DarwinBoot 1 GiB window handoff (pa 0x102804000, entry 0x106702488) into prelinked iPadOS 27.0.1 (24A446) 18-kext MH_FILESET arm64e XNU + real StaticTrustCache (3,547 entries), passing corecrypto v27.0 19/19 FIPS POST (55 ms), AppleImage4 v7.0.0, AMFI, Sandbox, vnguard, StaticTrustCache, XRING O1 GIC-700 ArmCpu + 38.4 MHz timer IRQs, APFS v3288.2.1, and bounded bsd_init() pre-setconf/vfs_mountroot PASS with byte-identical 39,258 B dual-ring ramoops (SHA-256 66dad7bc...) and verified stock boot_b/boot_a SHA-256 restore.",
+  "Stage-5 live boot_b run verified --initrd RAMDisk delivery (Payloads/launchd.macho -> /chosen/memory-map/RAMDisk -> md0), 2-module StaticTrustCache (official 24A446 module 0 untouched + Linux-signed 4 KiB-paged arm64e /sbin/launchd module 1), XNU mockfs vfs_mountroot() + devfs /dev/console, and real signed arm64e EL0 PID 1 execution ([EL0_INIT] PASS: pid=1 pagesize=4096 ncpu=8 availcpu=8 memsize=0x40000000 pac=ok(0xbc6afc0100001020) simd32=ok) -> SYS_reboot -> PSCI_SYSTEM_RESET(smc) with byte-identical 42,080 B dual-ring ramoops (SHA-256 962802aa...) and verified stock boot_b/boot_a SHA-256 restore.",
 ]
 completion = [
   "uefi-violin builds VIOLIN_UEFI.fd, boots via boot_b, emits RAM logs, renders UniXNU menu with physical button input, and hands off a FAT payload cleanly through DarwinBoot to XNU.",
 ]
 limits = [
-  "Stage-4 proved prelinked MH_FILESET boot through corecrypto v27.0, AppleImage4/AMFI/Sandbox/StaticTrustCache, XRING O1 GIC-700 ArmCpu timer interrupts, APFS module start, and bsd_init() pre-setconf/vfs_mountroot; native xring,ufs storage driver, root APFS mount, launchd, and OS userland boot remain pending Stage-5.",
+  "Stage-5 proved 8-core SMP + inter-core SGI 0 IPIs + mockfs md0 root + signed arm64e EL0 PID 1 execution under real AMFI/Sandbox/CoreTrust/StaticTrustCache; native xring,ufs storage driver, real APFS root mount, Apple dyld/launchd, and iPadOS 27 GUI userland boot remain pending Stage-6.",
 ]
 next_action = [
-  "Build native xring,ufs block driver (or early ramdisk root test) to pass setconf()/vfs_mountroot() into /sbin/launchd and expand SMP/GopFramebuffer/input drivers.",
+  "Run exception-safe Stage-6A probe of dwc_ufs@E1A40000 MMIO and implement read-only XringUfs block driver alongside GopFramebuffer display bring-up.",
 ]
 evidence = []
 
@@ -104,15 +105,16 @@ findings = [
   "Unmasked bare-metal ID_AA64MMFR0_EL1 (0x2100022200101122) confirms hardware TGran16=1 (16 KiB granule supported), TGran4=0, PARange=40-bit, ASIDBits=16-bit; ID_AA64PFR0_EL1 (0x1201111123111111) confirms GIC=3 and AArch64-only EL0..EL3; PSCI_VERSION SMC returns 0x00010001 (PSCI 1.1) with 0 traps.",
   "Live Linux /sys/firmware/fdt omits timebase-frequency under /cpus (Linux reads CNTFRQ_EL0 directly), whereas UniXNU devicetree.py requires timebase-frequency = <38400000> in DTS.",
   "Stage-4 live boot_b run verified XRING O1 GIC-700 (GICv4.1, stride=0x40000, typer=0x7f041e, iidr=0x403043b) ArmCpu bring-up on boot cpu0: ArmGicV3Dxe ExitBootServices clears GICD_CTLR EnableGrp1NS (0x12->0x10); soc-level ArmCpu restores 0x10->0x12 from NS EL1, clears stale NS PPIs, enables PPI 27 + SGI 0 (splitEoi=0, isenabler0=0x8000001, pmr=0xf0, igrpen1=0x1, sre=0x7), and delivers real 38.4 MHz virtual timer interrupts waking IOSleep(200) (armcpu_reg=1 gic_ready=1 timer_irqs=4 delta_200ms=3).",
+  "Stage-5 live boot_b run verified XRING O1 8/8-core SMP bring-up (cpus=8 smp=1 armcpu-self-ipi=1, 2x Cortex-A520 cpu0..1 + 6x Cortex-A725 cpu2..7, MPIDR 0x0..0x700) via PSCI 1.1 SMC (conduit=1, all psci_rc=0, step=7, fail=0) after porting the start.s MPIDR_EL1 & 0xFFFF mask (01-xring-o1-smp-mpidr-mask.patch), with real inter-core GIC-700 SGI 0 IPIs delivered to all 8 cores (sgi=1/6/2/2/2/2/2/2, taken=19) and EL0 HW_NCPU=8 / HW_AVAILCPU=8.",
 ]
 completion = [
   "Every enabled CPU reaches XNU entry with functional EL1 PAC key writes, generic timer ticks, and GICv3 IPI delivery.",
 ]
 limits = [
-  "Boot cpu0 GIC-700 + 38.4 MHz virtual timer IRQs are verified live under cpus=1; secondary-core PSCI CPU_ON SMP bring-up (smp=1) and inter-core IPIs remain pending Stage-5.",
+  "Cores 0..7 (MAX_CPUS=8 under BCM2837) are verified live with PSCI SMC bring-up and inter-core SGI 0 IPIs; cores 8..9 (Cortex-X925) require raising MAX_CPUS > 8 and re-auditing binary prelinked kext ABI.",
 ]
 next_action = [
-  "Verify secondary-core PSCI CPU_ON bring-up (smp=1) and GIC-700 SGI/IPI delivery across all 10 XRING O1 cores.",
+  "Evaluate MAX_CPUS=10 ABI compatibility for Cortex-X925 cores 8..9 and validate multi-core CPU load / timer tick distribution under active user workloads.",
 ]
 evidence = []
 

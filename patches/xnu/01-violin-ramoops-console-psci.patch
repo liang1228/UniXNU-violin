@@ -1,51 +1,3 @@
-diff -ruN a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
---- a/bsd/kern/bsd_init.c	2026-11-24 18:14:59.164437587 +0800
-+++ b/bsd/kern/bsd_init.c	2026-11-24 18:14:59.240744743 +0800
-@@ -1001,6 +1001,44 @@
- 	bsd_init_kprintf("calling inittodr\n");
- 	inittodr(0);
- 
-+	{
-+		unsigned int stage3_exit = 0;
-+		if (PE_parse_boot_argn("violin_stage3_exit", &stage3_exit, sizeof(stage3_exit)) && stage3_exit != 0U) {
-+			extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
-+			extern volatile uint32_t armcpu_registered;
-+			extern volatile uint32_t armcpu_gic_ready;
-+			extern volatile uint64_t armcpu_timer_interrupts;
-+			uint64_t irqs_before = armcpu_timer_interrupts;
-+			if (armcpu_gic_ready != 0U && irqs_before == 0ULL) {
-+				uint64_t freq = 0, t0 = 0, now = 0;
-+				__asm__ volatile ("mrs %0, cntfrq_el0" : "=r" (freq));
-+				__asm__ volatile ("isb\n\tmrs %0, cntpct_el0" : "=r" (t0));
-+				if (freq == 0ULL) { freq = 38400000ULL; }
-+				do {
-+					__asm__ volatile ("yield\n\tmrs %0, cntpct_el0" : "=r" (now));
-+				} while (armcpu_timer_interrupts == 0ULL && (now - t0) < (freq / 4ULL));
-+				irqs_before = armcpu_timer_interrupts;
-+			}
-+			if (armcpu_gic_ready != 0U && irqs_before > 0ULL) {
-+				IOSleep(200);
-+				uint64_t irqs_after = armcpu_timer_interrupts;
-+				kprintf("[XNU_STAGE4] PASS: reached bsd_init -> pre-setconf/vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu delta_200ms=%llu)\n",
-+				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_after, (unsigned long long)(irqs_after - irqs_before));
-+				printf("[XNU_STAGE4] PASS: reached bsd_init -> pre-setconf/vfs_mountroot (armcpu_reg=%u gic_ready=%u timer_irqs=%llu delta_200ms=%llu)\n",
-+				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_after, (unsigned long long)(irqs_after - irqs_before));
-+				violin_psci_reset_or_off(1U, "stage4-bsd-checkpoint");
-+			} else {
-+				uint64_t ctl = 0, tval = 0;
-+				__asm__ volatile ("mrs %0, cntv_ctl_el0" : "=r" (ctl));
-+				__asm__ volatile ("mrs %0, cntv_tval_el0" : "=r" (tval));
-+				kprintf("[XNU_STAGE4] FAIL: no timer IRQs (armcpu_reg=%u gic_ready=%u timer_irqs=%llu cntv_ctl=0x%llx cntv_tval=0x%llx)\n",
-+				    armcpu_registered, armcpu_gic_ready, (unsigned long long)irqs_before,
-+				    (unsigned long long)ctl, (unsigned long long)tval);
-+				violin_psci_reset_or_off(1U, "stage4-no-timer");
-+			}
-+		}
-+	}
-+
- 	/* Mount the root file system. */
- 	while (TRUE) {
- 		int err;
 diff -ruN a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
 --- a/osfmk/arm/arm_init.c	2026-11-24 18:14:59.123286776 +0800
 +++ b/osfmk/arm/arm_init.c	2026-11-24 18:14:59.239617118 +0800
@@ -75,25 +27,23 @@ diff -ruN a/osfmk/arm64/cpu.c b/osfmk/arm64/cpu.c
  #if WITH_CLASSIC_S2R
  void
  sleep_token_buffer_init(void)
-diff -ruN a/osfmk/arm64/machine_routines.c b/osfmk/arm64/machine_routines.c
---- a/osfmk/arm64/machine_routines.c	2026-11-24 18:14:59.135286773 +0800
-+++ b/osfmk/arm64/machine_routines.c	2026-11-24 18:14:59.239821197 +0800
-@@ -911,6 +911,7 @@
+--- a/osfmk/arm64/machine_routines.c	2026-11-24 22:50:52.020977083 +0800
++++ b/osfmk/arm64/machine_routines.c	2026-11-24 22:50:52.022139807 +0800
+@@ -911,11 +911,14 @@
  void
  halt_all_cpus(boolean_t reboot)
  {
 +	extern void violin_psci_reset_or_off(uint32_t delay_sec, const char *reason);
  	if (reboot) {
  		printf("MACH Reboot\n");
++		violin_psci_reset_or_off(1U, "halt_all_cpus(reboot)");
  		PEHaltRestart(kPERestartCPU);
-@@ -918,6 +919,7 @@
+ 	} else {
  		printf("CPU halted\n");
++		violin_psci_reset_or_off(1U, "halt_all_cpus(halt)");
  		PEHaltRestart(kPEHaltCPU);
  	}
-+	violin_psci_reset_or_off(1U, reboot ? "halt_all_cpus(reboot)" : "halt_all_cpus(halt)");
  	while (1) {
- 		;
- 	}
 diff -ruN a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 --- a/osfmk/arm64/start.s	2026-11-24 18:14:59.098269672 +0800
 +++ b/osfmk/arm64/start.s	2026-11-24 18:14:59.239230002 +0800
@@ -202,10 +152,9 @@ diff -ruN a/osfmk/kern/debug.c b/osfmk/kern/debug.c
  	for (;;) {
  #if defined(__arm__) || defined(__arm64__)
  		/* On arm32, which doesn't have a WFE timeout, this may not return.  But that should be OK on this path. */
-diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
---- a/pexpert/arm/pe_serial.c	2026-11-24 18:14:59.111286778 +0800
-+++ b/pexpert/arm/pe_serial.c	2026-11-24 18:14:59.239434180 +0800
-@@ -738,6 +738,167 @@
+--- a/pexpert/arm/pe_serial.c	2026-11-24 22:28:53.787204240 +0800
++++ b/pexpert/arm/pe_serial.c	2026-11-24 22:28:53.787852375 +0800
+@@ -738,6 +738,182 @@
   *
   * @param str The string to output.
   */
@@ -233,6 +182,7 @@ diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
 +static vm_offset_t violin_pl011_va = 0;
 +static uint32_t violin_ramoops_active = 0;
 +static uint32_t violin_qemu_mode = 0;
++static volatile uint32_t violin_ramoops_lock = 0;
 +
 +static void
 +violin_ramoops_ring_putc(vm_offset_t base, uint32_t total_size, uint8_t c)
@@ -267,6 +217,16 @@ diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
 +static void
 +violin_ramoops_transmit_data(uint8_t c)
 +{
++	uint64_t daif = 0;
++	__asm__ volatile ("mrs %0, daif\n\tmsr daifset, #3" : "=r" (daif) :: "memory");
++	unsigned int locked = 0;
++	for (unsigned int spin = 0; spin < 500000U; spin++) {
++		if (__atomic_exchange_n(&violin_ramoops_lock, 1U, __ATOMIC_ACQUIRE) == 0U) {
++			locked = 1U;
++			break;
++		}
++		__asm__ volatile ("yield" ::: "memory");
++	}
 +	violin_ramoops_ring_putc(violin_console_va, (uint32_t)VIOLIN_RAMOOPS_CONSOLE_SZ, c);
 +	violin_ramoops_ring_putc(violin_pmsg_va, (uint32_t)VIOLIN_RAMOOPS_PMSG_SZ, c);
 +	if (violin_pl011_va != 0) {
@@ -279,6 +239,10 @@ diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
 +		}
 +		*dr = (uint32_t)c;
 +	}
++	if (locked) {
++		__atomic_store_n(&violin_ramoops_lock, 0U, __ATOMIC_RELEASE);
++	}
++	__asm__ volatile ("msr daif, %0" :: "r" (daif) : "memory");
 +}
 +
 +static void
@@ -373,7 +337,7 @@ diff -ruN a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
  static void uart_puts_force_poll(
  	const char *str);
  
-@@ -899,6 +1060,25 @@
+@@ -899,6 +1075,25 @@
  		return gPESF != NULL;
  	}
  
