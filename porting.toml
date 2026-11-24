@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live read-only baseline captured on 2026-11-24 (OS4.0.6.0.XOTCNXM / Linux 6.18.21): 10/10 QARMA3 PAuth/FPAC, 38.4 MHz CNTFRQ_EL0, 16 GiB RAM, raw GPT userdata, boot/vendor_boot v4 headers; uefi-violin and XNU entry remain pending."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device scaffold targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24 baseline and Stage-0 bare-metal boot_b probe confirm EL1 handoff at 0x200000 (x0=0x8200000 FDT), zero-trap EL1 5-key PAC MSR writes + QARMA3/FPAC execution under XHEE, hardware TGran16=1 (16 KiB pages), PSCI 1.1 SMC, and automated slot-b-to-slot-a ramoops telemetry; uefi-violin and XNU entry remain pending."
 
 [[area]]
 id = "configuration"
@@ -47,32 +47,33 @@ status = "planned"
 components = ["DarwinBoot"]
 paths = ["proprietary-files.txt", "scripts/package.sh"]
 inputs = [
-  "Unlocked bootloader on Xiaomi Pad 7S Pro (violin / O81A, slot _a) running OS4.0.6.0.XOTCNXM (Android 17, Linux 6.18.21, vbmeta digest 9147d913..., verifiedbootstate=green while booted with KSU).",
-  "Stock boot_a (/dev/block/sdc17, 100,663,296 B): ANDROID! v4, kernel_size=42,940,928, ramdisk_size=0, AVBf footer.",
+  "Unlocked bootloader on Xiaomi Pad 7S Pro (violin / O81A, slot _a) running OS4.0.6.0.XOTCNXM (Android 17, Linux 6.18.21); EDK2-XRING 1.0 user fastboot confirms unlocked=yes, variant=XR_UFS, max-download-size=536870912, and omits fastboot boot (unknown command).",
+  "Stock boot_a (/dev/block/sdc17, 100,663,296 B): ANDROID! v4, kernel_size=42,940,928, ramdisk_size=0, AVBf footer; boot_b (/dev/block/sdc46) is verified by HashDescriptor in vbmeta_b.",
   "Stock vendor_boot_a (/dev/block/sdc19, 100,663,296 B): VNDRBOOT v4 matching UniXNU vendor_boot.py (page_size=4096, header_size=2128, dtb_size=221,460, bootconfig_size=206, ramdisk=5,390,315, AVBf footer).",
   "Stock init_boot_a (/dev/block/sdc18, 16,777,216 B, ANDROID! v4 ramdisk=3,104,429) and uefi_a (/dev/block/sdc3, 6,291,456 B).",
-  "EL2 hypervisor active under Linux cmdline (kvm-arm.mode=protected, kvm-arm.hyp_iommu_pages=16384, rsv_mem_xhee@70010000 64 MiB); dedicated bl31_a/b and xhee_a/b partitions present.",
+  "Stage-0 bare-metal probe via inactive boot_b verified handoff at EL1 (CurrentEL=0x4, XHEE resident at EL2), LOAD_PC=0x200000, X0=0x8200000 (valid FDT 0xd00dfeed, 490,419 B), SCTLR_EL1=0x30d00980 (MMU/caches off), DAIF=0x3c0.",
 ]
 configuration = [
   "board.toml [firmware] holds placeholder uefi-violin DSC/FD paths under Platforms/Xiaomi/violinPkg/.",
   "board.toml [payload] sets loader = firmware, volume = VIOLINESP, dram_size = 0x80000000.",
 ]
 procedure = [
-  "Verify BL31/XHEE HCR_EL2.APK/API and direct EL1 AP*Key MSR writes during early uefi-violin bring-up via boot_a or vendor_boot_a.",
-  "Bring up uefi-violin (Mu-Silicium) with UniXNURamDiskDxe, DiskIoDxe, FAT, and GOP/RAM serial logging.",
+  "Use inactive boot_b with PSCI SYSTEM_RESET fallback to untouched slot a plus DBGC ramoops (0xA0040000 console / 0xA00C0000 pmsg) for repeatable hardware bring-up.",
+  "Bring up uefi-violin (Mu-Silicium) with BootShim at 0x200000, UniXNURamDiskDxe, DiskIoDxe, FAT, and GOP/RAM serial logging.",
 ]
 findings = [
-  "Stock boot_a uses Android header v4 with zero ramdisk, whereas vendor_boot_a uses v4 VNDRBOOT (page=4096, header=2128, AVBf) compatible with UniXNU scripts/unixnu/vendor_boot.py.",
+  "EDK2-XRING 1.0 user removes fastboot boot (unknown command), but flashing inactive boot_b with set_active b auto-falls back to untouched slot a ('Switch to slot 0') after 7 retries while preserving console-ramoops-0 and pmsg-ramoops-0 across warm reboot.",
+  "Bare-metal EL1 probe passed all 5 PAC key MSR write/readback pairs (APIA..APGA) and PACIA/IB/DA/DB/GA execution with 0 traps, proving XHEE sets HCR_EL2.APK=1 and HCR_EL2.API=1.",
   "Live running-fdt.dtb confirms dwuart3@ec118000 (SPI 144) is status=okay while dwuart6@ec11a000 (SPI 146) is status=disabled.",
 ]
 completion = [
-  "uefi-violin builds SILICIUM_UEFI.fd, boots via fastboot boot or vendor_boot_a, prints RAM/UART logs, enters UniXNU, and confirms non-trapping EL1 PAC key setup.",
+  "uefi-violin builds SILICIUM_UEFI.fd, boots via boot_b, emits RAM/UART logs, renders UniXNU menu, and hands off cleanly to DarwinBoot.",
 ]
 limits = [
-  "No uefi-violin Mu-Silicium repository exists yet; direct EL1 AP*Key writes under UEFI/XNU have not yet been tested.",
+  "No uefi-violin Mu-Silicium repository exists yet; Stage-0 bare-metal probe does not prove EDK II SEC/DXE or DarwinBoot execution.",
 ]
 next_action = [
-  "Bootstrap uefi-violin Mu-Silicium platform package using verified 16 GiB RAM layout and dwuart3/RAM log findings.",
+  "Bootstrap uefi-violin Mu-Silicium platform package using verified EL1 handoff (0x200000 / X0=0x8200000), 16 GiB RAM layout, and 0xA0040000 ramoops logger.",
 ]
 evidence = []
 
@@ -95,17 +96,18 @@ procedure = [
   "Implement XRING O1 timer bridge and verify direct EL1 AP*Key MSR writes + secondary core PSCI bring-up on hardware.",
 ]
 findings = [
-  "All 10 cores (0..9) executed EL0 PACIA -> AUTIA and PACGA on a canonical 39-bit pointer (0x0000001234567890 -> 0x0026ea1234567890 -> 0x0000001234567890, PACGA=0xbcfde63e00000000) with 0 traps; APA3=5 (FEAT_FPAC) immediately raises SIGILL on non-canonical pointer authentication failures.",
+  "All 10 cores (0..9) executed EL0 PACIA -> AUTIA and PACGA with 0 traps under Linux, and bare-metal EL1 Stage-0 probe on boot CPU cpu0 (0x410fd801, MPIDR 0x80000000) passed all 5 PAC key MSR write/readback pairs (APIA..APGA) and PACIA/IB/DA/DB/GA + AUTIA/IB/DA/DB execution with 0 traps and 0 SErrors under XHEE.",
+  "Unmasked bare-metal ID_AA64MMFR0_EL1 (0x2100022200101122) confirms hardware TGran16=1 (16 KiB granule supported), TGran4=0, PARange=40-bit, ASIDBits=16-bit; ID_AA64PFR0_EL1 (0x1201111123111111) confirms GIC=3 and AArch64-only EL0..EL3; PSCI_VERSION SMC returns 0x00010001 (PSCI 1.1) with 0 traps.",
   "Live Linux /sys/firmware/fdt omits timebase-frequency under /cpus (Linux reads CNTFRQ_EL0 directly), whereas UniXNU devicetree.py requires timebase-frequency = <38400000> in DTS.",
 ]
 completion = [
   "Every enabled CPU reaches XNU entry with functional EL1 PAC key writes, generic timer ticks, and GICv3 IPI delivery.",
 ]
 limits = [
-  "XRING O1 timer bridge from UniXNU-dijun is not public; EL1 AP*Key writes outside Linux/KSU have not been tested yet.",
+  "XRING O1 timer bridge from UniXNU-dijun is not public; secondary core PSCI bring-up and XNU ArmCpu entry have not been tested yet.",
 ]
 next_action = [
-  "Verify EL1 AP*Key MSR writes during early uefi-violin bring-up and design XRING O1 ArmCpu/timer integration.",
+  "Design XRING O1 ArmCpu/timer integration and verify secondary-core PSCI bring-up once uefi-violin enters DarwinBoot.",
 ]
 evidence = []
 
@@ -120,7 +122,7 @@ inputs = [
   "Live SMMUv3 blocks: media1_smmu@e7800000, media2_smmu@e5400000, and npu_smmu@e9400000 are status=okay in running FDT; pcie_smmu@cf200000 is disabled.",
 ]
 configuration = [
-  "dts/violin.dts defines memory@100000000 reg = <0x0 0x100000000 0x0 0x80000000> inside Bank 1, matching board.toml payload.dram_size = 0x80000000.",
+  "dts/violin.dts defines memory@100000000 reg = <0x1 0x0 0x0 0x80000000> inside Bank 1, matching board.toml payload.dram_size = 0x80000000.",
   "dts/xring-o1.dtsi marks all arm,smmu-v3 nodes disabled until an SMMUv3 Darwin backend exists.",
 ]
 procedure = [
@@ -360,6 +362,7 @@ procedure = [
   "Inspect platform/O1 CRG/PMIC headers and verify PSCI poweroff/reboot paths cleanly in UEFI/early XNU.",
 ]
 findings = [
+  "Bare-metal Stage-0 probe verified PSCI_VERSION (0x84000000 -> 0x00010001, PSCI 1.1) and PSCI SYSTEM_RESET (0x84000009) via smc #0 with 0 traps.",
   "sleep-disabled = 1 prevents deep CPU idle hangs prior to PMGR/regulator integration.",
 ]
 completion = [
@@ -424,6 +427,7 @@ procedure = [
 ]
 findings = [
   "Live baseline confirms 490,412 B FDT, 38.4 MHz CNTFRQ_EL0, 10/10 QARMA3 PAuth/FPAC, raw GPT userdata, and v4 boot/vendor_boot layout.",
+  "Stage-0 bare-metal probe verified dual-ring DBGC persistent RAM logging at 0xA0040000 (console-ramoops-0, 512 KiB) and 0xA00C0000 (pmsg-ramoops-0, 256 KiB) survives PSCI warm reset and EDK2-XRING slot-b-to-slot-a auto-fallback with byte-identical 2,121 B telemetry.",
 ]
 completion = [
   "Every claimed milestone records exact commands, commits, logs, and host vs EL1/hardware boundaries.",
