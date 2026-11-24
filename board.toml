@@ -11,9 +11,9 @@ soc_source = "xring-o1"
 os_profile = "ipados-27.0.1-24A446"
 
 [userdata]
-# TODO: populate first_lba / last_lba from live violin GPT userdata entry before packaging.
-first_lba = 0
-last_lba = 0
+# Verified 2026-11-24 against raw /dev/block/sdc GPT header + entries and /sys/class/block/sdc80 (4096-byte UFS blocks).
+first_lba = 3138056
+last_lba = 129089527
 lba_bytes = 4096
 
 [kernel]
@@ -41,11 +41,18 @@ packages = ["{uefi}", "{tree}/package", "{tree}/drivers/DarwinBoot", "{edk2}"]
 [firmware.defines]
 DEVICE_MODEL = "violin"
 
+[bootimg]
+# Verified 2026-11-24 stock /dev/block/sdc17 (boot_a) and /dev/block/sdc19 (vendor_boot_a):
+# both partitions are 100,663,296 bytes (96 MiB) with AVBf footers; boot_a is Android v4
+# (ramdisk_size = 0) and vendor_boot_a matches UniXNU vendor_boot v4 (VNDRBOOT, page_size = 4096).
+# Set max_image_bytes = 100663296 when uefi-violin boot/vendor_boot packaging lands.
+
 [payload]
 volume = "VIOLINESP"
 size_mib = 176
 loader = "firmware"
 title = "UniXNU (violin)"
+# Matches memory@100000000 (2 GiB window inside verified clean 12 GiB high bank 0x100000000..0x3ffffdfff).
 dram_size = "0x80000000"
 panic_screen = true
 timeout = 3
@@ -53,6 +60,7 @@ kernel_args = ["-v", "serial=3", "debug=0x14e", "-no_slto_panic"]
 
 [payload.adt]
 chip_id = "8142"
+# Matches clean 2 GiB bootstrap window inside verified 12 GiB high bank (0x100000000..0x3ffffdfff).
 owned_memory_size = "0x80000000"
 psci_method = "smc"
 unique_chip_id = "required"

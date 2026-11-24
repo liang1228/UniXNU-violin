@@ -2,34 +2,41 @@
 /*
  * Xiaomi Pad 7S Pro (violin / O81A / XRING O1) board device tree for UniXNU.
  *
- * Baseline: MiCode/Xiaomi_Kernel_OpenSource branch violin-v-oss
- * commit 99a9aff00a2856f065954672660bd0fe0ad0a064 (franklin1_o81a_pad.dtsi).
+ * Baselines:
+ *   - MiCode/Xiaomi_Kernel_OpenSource branch violin-v-oss (99a9aff00a2856f065954672660bd0fe0ad0a064)
+ *   - Live 2026-11-24 running-fdt.dtb (SHA-256 1c13390e68bee6d7eff86c7a4bd2ae29fd189971df0290cdc855e5c52c9ebbe8,
+ *     Android 17 / Linux 6.18.21 / OS4.0.6.0.XOTCNXM) & /proc/iomem
  */
 
 /dts-v1/;
 /include/ "xring-o1.dtsi"
 
 / {
-    model = "XiaoMi Franklin1 O81A PAD";
-    compatible = "XiaoMi,Franklin1-o81a-pad", "xring,o1";
+    model = "XiaoMi Xring_o1 O81A PAD";
+    compatible = "XiaoMi,Xring_o1-o81a-pad", "XiaoMi,Franklin1-o81a-pad", "xring,o1";
 
     /*
-     * TODO: populate exact DRAM base and size from live device UEFI/FDT memory map
-     * before setting board.example = false and generating boot/ADT images.
+     * Live 16 GiB 3-bank physical RAM reported by running-fdt.dtb:
+     *   - Bank 0: 0x000000000..0x0bfffffff (3 GiB, fragmented by TEEOS/XHEE/ADSP/DPU reservations)
+     *   - Bank 1: 0x100000000..0x3ffffffff (12 GiB; only 0x3ffffe000..0x3ffffffff border_prot_mem1 8 KiB reserved)
+     *   - Bank 2: 0x800000000..0x83fffffff (1 GiB; upper 0x800e68000..0x83fffffff reserved)
+     * Expose a clean contiguous 2 GiB window from Bank 1 matching payload.dram_size = "0x80000000"
+     * until multi-bank UEFI memory handoff (DarwinBoot) is brought up on violin.
      */
-    memory@0 {
+    memory@100000000 {
         device_type = "memory";
-        reg = <0x0 0x0 0x0 0x0>;
+        reg = <0x0 0x100000000 0x0 0x80000000>;
     };
 };
 
 /*
- * Reserved memory & O81A hardware notes from violin-v-oss (99a9aff00a2856f065954672660bd0fe0ad0a064)
- * and the 2026-11-17 running FDT capture (verify against current target firmware before enabling):
- *   - dpu_logo@20000000     (size 0x10000000, 256 MiB bootloader splash / display logo region)
- *   - pstore@a0000000       (size 0x00100000, mtdoops_pmsg record=0x80000 console=0x40000 pmsg=0x40000)
- *   - ufs_param@70001000    (vendor UFS parameter reservation)
- *   - memdump_reserve@43480000 (vendor memory dump reservation; BL2/ADSP baselines in platform/O1/)
- *   - UART divergence: base DTS enables dwuart6@ec11a000 (SPI 146) and disables dwuart3@ec118000 (SPI 144),
- *     whereas the 2026-11-17 Android 17 FDT enabled dwuart3 and disabled dwuart6.
+ * Verified live 2026-11-24 FDT/iomem findings (OS4.0.6.0.XOTCNXM / Linux 6.18.21):
+ *   - Reserved carveouts in Bank 0 include rsv_mem_zero@0 (0x0+0x200000), rsv_mem_dpu_logo@20000000
+ *     (actual reg 0x24200000+0x10000000, shifted from 0x20000000 in 6.6.30 DTS), rsv_mem_teeos@35680000
+ *     (0xc000000), rsv_mem_bl31@42880000 (0x400000), rsv_mem_log@43480000 (0xa00000),
+ *     rsv_mem_xhee@70010000 (0x4000000), rsv_mem_ufs_param@70001000 (0x1000), rsv_mem_pstore@a0000000 (0x100000),
+ *     rsv_mem_sec_region@bfffe000 (0x2000); Bank 1 tail border_prot_mem1@3ffffe000 (0x2000).
+ *   - Console UART: live FDT enables dwuart3@ec118000 (SPI 144) and disables dwuart6@ec11a000 (SPI 146).
+ *   - Display/input/wireless: 3200x2136@144Hz DSI panel, KTZ8866A backlight, NVT_xiaomi_touch_TC on
+ *     spi@e1507000, nanosic@4c on i2c@ec10a000, MediaTek mt663x Wi-Fi/BT on pcie@ce400000.
  */

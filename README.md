@@ -5,8 +5,9 @@ UniXNU Format 2 device repository scaffold for **Xiaomi Pad 7S Pro** (`violin` /
 ## Current Scope
 
 - Shared XRING O1 SoC definitions live in sibling [`UniXNU-xring-o1-common`](../UniXNU-xring-o1-common) and are wired locally through the gitignored `local.toml` (`local.toml.example`).
-- `board.toml` currently retains `example = true` and `0` / `REQUIRED_*` placeholders for uncaptured device GPT `userdata` LBAs, live DRAM banks, firmware blobs (`proprietary-files.txt`), and the pending `uefi-violin` Mu-Silicium repository.
-- Hardware source baseline: `MiCode/Xiaomi_Kernel_OpenSource` branch `violin-v-oss` (`99a9aff00a2856f065954672660bd0fe0ad0a064`).
+- Populated from 2026-11-24 live read-only hardware captures on `violin` (`OS4.0.6.0.XOTCNXM` / Linux `6.18.21`): verified raw GPT `userdata` LBAs (`3138056..129089527` @ 4096 B), clean 2 GiB bootstrap window `memory@100000000` inside the 12 GiB high bank, `38.4 MHz` `CNTFRQ_EL0`, and 10/10 QARMA3 PAuth/FPAC (`ID_AA64ISAR2_EL1` `APA3=5`, `GPA3=1`) at EL0.
+- `board.toml` retains `example = true` until `proprietary-files.txt` hashes and the pending `uefi-violin` Mu-Silicium repository exist.
+- Source baseline: `MiCode/Xiaomi_Kernel_OpenSource` branch `violin-v-oss` (`99a9aff00a2856f065954672660bd0fe0ad0a064`) + live `running-fdt.dtb` (`1c13390e68bee6d7eff86c7a4bd2ae29fd189971df0290cdc855e5c52c9ebbe8`).
 
 ## Validation Commands
 
