@@ -67,6 +67,33 @@
 };
 
 /*
+ * Stage-7L: Expose non-secure USB2-HS Device Mode MMIO blocks (HSS1_CRG, LPIS_ACTRL,
+ * USB_SCTRL, DWC_usb31 v2.00a, I2C12 for PTN3222 @ 0x4F) verified live 0-trap in Stage-7I.
+ * Delete FDT interrupts on polled nodes per PRJ-027 until AppleUSBXDCI GIC bridge lands.
+ */
+&i2c12 {
+    status = "okay";
+    /delete-property/ interrupts;
+};
+
+&hss1_crg {
+    status = "okay";
+};
+
+&lpis_actrl {
+    status = "okay";
+};
+
+&usb_sctrl {
+    status = "okay";
+};
+
+&dwc3 {
+    status = "okay";
+    /delete-property/ interrupts;
+};
+
+/*
  * Verified live 2026-11-24 FDT/iomem findings (OS4.0.6.0.XOTCNXM / Linux 6.18.21):
  *   - Reserved carveouts in Bank 0 include rsv_mem_zero@0 (0x0+0x200000), rsv_mem_dpu_logo@20000000
  *     (actual reg 0x24200000+0x10000000, shifted from 0x20000000 in 6.6.30 DTS), rsv_mem_teeos@35680000
