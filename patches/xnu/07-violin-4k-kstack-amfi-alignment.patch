@@ -1,0 +1,33 @@
+--- a/osfmk/kern/stack.c
++++ b/osfmk/kern/stack.c
+@@ -154,6 +154,8 @@
+ static vm_offset_t stack_alloc_internal(void);
+ static void stack_free_stack(vm_offset_t);
+ 
++extern int unixnu_kernel_stack_shift;
++
+ static void
+ stack_init(void)
+ {
+@@ -173,8 +175,19 @@
+ 		    (void *) kernel_stack_size, PAGE_SIZE);
+ 	}
+ 
+-	stack_addr_mask = roundup_pow2(kernel_stack_size) - 1;
+-	kernel_stack_mask = ~stack_addr_mask;
++	/*
++	 * Align the full kernel stack allocation (2 lower guard pages +
++	 * kernel_stack_size + 1 upper guard page) to a power-of-two boundary so
++	 * the usable stack never straddles a (1 << unixnu_kernel_stack_shift)
++	 * boundary. AMFI _CEElementIterate checks
++	 * (sp & ((1 << unixnu_kernel_stack_shift) - 1)) < 0x80; with 4 KiB
++	 * pages and 16 KiB stacks (28 KiB total), 16 KiB alignment lets half of
++	 * stacks cross 32 KiB boundaries and spuriously fail with error 14.
++	 */
++	vm_offset_t alloc_align = roundup_pow2(kernel_stack_size + ptoa(3));
++	stack_addr_mask = alloc_align - 1;
++	kernel_stack_mask = ~(roundup_pow2(kernel_stack_size) - 1);
++	unixnu_kernel_stack_shift = (int)(flsll(alloc_align) - 1);
+ }
+ STARTUP(TUNABLES, STARTUP_RANK_MIDDLE, stack_init);
+ 

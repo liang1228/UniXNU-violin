@@ -1,0 +1,18 @@
+Expose Darwin 26 (iPadOS 27.0.1 / 24A446) security.mac.lockdown_mode_state_public sysctl.
+
+In 24A446, libsystem_darwin's os_lockdown_mode_enabled_block_invoke (called by /sbin/launchd
+immediately after 'Early boot complete. Continuing system boot.') queries
+security.mac.lockdown_mode_state_public and aborts (SIGABRT, namespace 2 subcode 0x6) if
+sysctlbyname returns ENOENT. Verified verbatim against 24A446 Apple kernelcache (0xa0d05).
+
+diff --git a/bsd/kern/lockdown_mode.c b/bsd/kern/lockdown_mode.c
+--- a/bsd/kern/lockdown_mode.c
++++ b/bsd/kern/lockdown_mode.c
+@@ -39,6 +39,7 @@
+ 
+ SYSCTL_DECL(_security_mac);
+ SYSCTL_INT(_security_mac, OID_AUTO, lockdown_mode_state, CTLFLAG_RD | CTLFLAG_LOCKED, &lockdown_mode_state, 0, "Lockdown Mode state");
++SYSCTL_INT(_security_mac, OID_AUTO, lockdown_mode_state_public, CTLFLAG_RD | CTLFLAG_LOCKED, &lockdown_mode_state, 0, "Lockdown Mode state (public)");
+ 
+ __startup_func
+ void

@@ -1,0 +1,145 @@
+Enable 47-bit TTBR0 (T0SZ_BOOT=17, 4-level L0->L1->L2->L3 user page tables) while keeping
+38-bit TTBR1 (T1SZ_BOOT=26, 3-level L1->L2->L3 kernel page tables) on native 4 KiB arm64e.
+
+iPadOS 27.0.1 (24A446) libobjc.A.dylib realizeClassWithoutSwift strips cls->isa with a
+hardcoded 43-bit ISA_MASK (0x0000_07FF_FFFF_FFF8, bits [42:3]). With 38-bit T0SZ_BOOT=26,
+PACDA places 5 signature bits in [42:38], colliding with ISA_MASK and faulting launchd[1]
+with ESR=0x92000004 (L0 Translation Fault) right after system-wide dyld_shared_cache map.
+Raising TTBR0 to 47-bit (T0SZ_BOOT=17) puts all PACDA bits strictly in [54:47], matching
+Apple Silicon user VA/PAC geometry while keeping TTBR1 kernel layout and 28-kext prelink
+signatures unchanged.
+
+diff --git a/pexpert/pexpert/arm64/BCM2837.h b/pexpert/pexpert/arm64/BCM2837.h
+--- a/pexpert/pexpert/arm64/BCM2837.h
++++ b/pexpert/pexpert/arm64/BCM2837.h
+@@ -30,6 +30,9 @@
+ #if defined(__arm64e__)
+ #define HAS_APPLE_PAC             1
+ #define HAS_NATIVE_PAC            1
++#define ARM_PARAMETERIZED_PMAP         1
++#define HAS_ARM_INDEPENDENT_TNSZ       1
++#define __ARM64_PMAP_KERN_SUBPAGE_L1__ 1
+ #endif
+ 
+ #ifndef ASSEMBLER
+diff --git a/osfmk/arm64/proc_reg.h b/osfmk/arm64/proc_reg.h
+--- a/osfmk/arm64/proc_reg.h
++++ b/osfmk/arm64/proc_reg.h
+@@ -1096,7 +1096,9 @@
+ #define T0SZ_BOOT 17ULL
+ #endif /* !__ARM64_PMAP_SUBPAGE_L1__ */
+ #else /* __ARM_16K_PG__ */
+-#if __ARM64_PMAP_SUBPAGE_L1__
++#if defined(__arm64e__) && HAS_ARM_INDEPENDENT_TNSZ
++#define T0SZ_BOOT 17ULL
++#elif __ARM64_PMAP_SUBPAGE_L1__
+ #define T0SZ_BOOT 26ULL
+ #else /* __ARM64_PMAP_SUBPAGE_L1__ */
+ #define T0SZ_BOOT 25ULL
+diff --git a/osfmk/arm/pmap/pmap.h b/osfmk/arm/pmap/pmap.h
+--- a/osfmk/arm/pmap/pmap.h
++++ b/osfmk/arm/pmap/pmap.h
+@@ -119,7 +119,7 @@
+ /* Native 4 KiB: two roots plus up to seven L2 pages per 6 GiB mapping.
+  * The physical and virtual bases may each straddle an extra 1 GiB region.
+  */
+-#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 16)
++#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 20)
+ #else /* defined(ARM_LARGE_MEMORY) */
+ #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 8)
+ #endif /* defined(ARM_LARGE_MEMORY) */
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -614,9 +614,29 @@
+ 	 * slide, we need 1xL1 and up to 3xL2 pages (1GB mapped per L1 entry), so
+ 	 * 8 total pages for V=P and KVA.
+ 	 */
++#if !__ARM_16K_PG__ && (T0SZ_BOOT < 25)
++	/*
++	 * 4-level TTBR0 (L0->L1->L2->L3) with 3-level TTBR1 (L1->L2->L3):
++	 *   Page 0 (x25):           V=P L0 root table (TTBR0_EL1)
++	 *   Page 1 (x25 + PGBYTES): KVA L1 root table (TTBR1_EL1)
++	 *   Page 2 (x25 + 2*PG):    V=P L1 table pointed to by x25[l0_idx(x0)]
++	 */
++	add		x3, x25, PGBYTES
++	add		x1, x3, PGBYTES
++	mov		x2, x1
++	and		x6, x0, #(ARM_PTE_T0_REGION_MASK(TCR_EL1_BOOT))
++	lsr		x6, x6, #(ARM_4K_TT_L0_SHIFT)
++	lsl		x6, x6, #(TTE_SHIFT)
++	add		x6, x25, x6
++	mov		x7, #(ARM_TTE_BOOT_TABLE)
++	and		x8, x1, #(ARM_TTE_TABLE_MASK)
++	orr		x8, x7, x8
++	str		x8, [x6]
++#else
+ 	mov		x1, x25
+ 	add		x3, x1, PGBYTES
+ 	mov		x2, x3
++#endif
+ 
+ 	/*
+ 	 * Setup the V=P bootstrap mapping
+diff --git a/osfmk/arm/pmap/pmap.c b/osfmk/arm/pmap/pmap.c
+--- a/osfmk/arm/pmap/pmap.c
++++ b/osfmk/arm/pmap/pmap.c
+@@ -307,6 +307,26 @@
+ 	.pta_page_shift = 12,
+ 	.pta_va_valid_mask = ARM_PTE_T0_REGION_MASK(TCR_EL1_4KB),
+ };
++
++#if !__ARM_16K_PG__ && ARM_PARAMETERIZED_PMAP && HAS_ARM_INDEPENDENT_TNSZ && (T0SZ_BOOT != T1SZ_BOOT)
++const struct page_table_attr pmap_pt_attr_4k_kern = {
++	.pta_level_info = pmap_table_level_info_4k,
++	.pta_root_level = (T1SZ_BOOT - 16) / 9,
++	.pta_commpage_level = PMAP_TT_L1_LEVEL,
++	.pta_max_level  = PMAP_TT_L3_LEVEL,
++	.pta_ops = &native_pt_ops,
++	.ap_ro = ARM_PTE_AP(AP_RORO),
++	.ap_rw = ARM_PTE_AP(AP_RWRW),
++	.ap_rona = ARM_PTE_AP(AP_RONA),
++	.ap_rwna = ARM_PTE_AP(AP_RWNA),
++	.ap_xn = ARM_PTE_PNX | ARM_PTE_NX,
++	.ap_x = ARM_PTE_PNX,
++	.pta_page_size  = 4096,
++	.pta_pagezero_size = 4096,
++	.pta_page_shift = 12,
++	.pta_va_valid_mask = ARM_PTE_T1_REGION_MASK(TCR_EL1_BOOT),
++};
++#endif
+ 
+ const struct page_table_attr pmap_pt_attr_16k = {
+ 	.pta_level_info = pmap_table_level_info_16k,
+@@ -2278,7 +2298,11 @@
+ 	 *	Initialize the kernel pmap.
+ 	 */
+ #if ARM_PARAMETERIZED_PMAP
++#if !__ARM_16K_PG__ && HAS_ARM_INDEPENDENT_TNSZ && (T0SZ_BOOT != T1SZ_BOOT)
++	kernel_pmap->pmap_pt_attr = &pmap_pt_attr_4k_kern;
++#else
+ 	kernel_pmap->pmap_pt_attr = native_pt_attr;
++#endif
+ #endif /* ARM_PARAMETERIZED_PMAP */
+ #if HAS_APPLE_PAC
+ 	kernel_pmap->disable_jop = 0;
+diff --git a/osfmk/vm/vm_sanitize.c b/osfmk/vm/vm_sanitize.c
+--- a/osfmk/vm/vm_sanitize.c
++++ b/osfmk/vm/vm_sanitize.c
+@@ -640,7 +640,16 @@
+ 		 * instead of assuming it is 48 bits.
+ 		 * This is excluded from unit-test build due to being EL1 only instruction
+ 		 */
++#if defined(APPLE_ARM64_ARCH_FAMILY)
+ 		assert((__builtin_arm_rsr64("ID_AA64MMFR2_EL1") & ID_AA64MMFR2_EL1_VARANGE_MASK) == 0);
++#else
++		/*
++		 * Non-Apple ARMv8.2+/ARMv9.2 SoCs (XRING O1, QEMU -cpu max) advertise
++		 * FEAT_LVA (VARange=1) even when TCR_EL1 configures <= 48-bit VA.
++		 */
++		assert(((__builtin_arm_rsr64("TCR_EL1") & 0x3full) >= 16) &&
++		    (((__builtin_arm_rsr64("TCR_EL1") >> 16) & 0x3full) >= 16));
++#endif
+ #endif /* defined(__arm64__) && MACH_ASSERT && !__BUILDING_XNU_LIBRARY__ */
+ 		const uint64_t max_va_bits = 48;
+ 		const mach_vm_offset_t va_range_upper_bound = (1ULL << max_va_bits);

@@ -8,3 +8,6 @@ arch:../../../patches/xnu-12377/darwin26-shared-region.patch
 02-violin-arm64e-iig-ptrauth-cast.patch
 03-violin-stage5-6-smp-ufs-hooks.patch
 04-violin-arm64e-vfpthunk-ioworkloop-pm.patch
+05-violin-arm64e-47bit-ttbr0.patch
+06-violin-darwin26-lockdown-mode-public-sysctl.patch
+07-violin-4k-kstack-amfi-alignment.patch
