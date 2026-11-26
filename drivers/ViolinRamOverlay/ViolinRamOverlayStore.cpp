@@ -25,6 +25,15 @@ volatile uint64_t violin_ram_overlay_writes = 0;
 volatile uint64_t violin_ram_overlay_cap_rejects = 0;
 volatile uint32_t violin_ram_overlay_opened = 0;
 
+/* Fenced UFS SHNGDATA backend (XringUfsRoot.cpp, enabled only by xring-ufs-data=1|2) */
+unsigned xring_ufs_data_store_mode(void);
+int xring_ufs_data_store_open(uint64_t blocks, uint64_t *first_lba, const char **why);
+int xring_ufs_data_store_read(uint64_t block, uint32_t count, void *dst);
+int xring_ufs_data_store_write(uint64_t block, uint32_t count, const void *src);
+int xring_ufs_data_store_write_cached(uint64_t block, uint32_t count, const void *src);
+int xring_ufs_data_store_sync(void);
+unsigned xring_ufs_data_store_gpt_check(void);
+
 unsigned native_ufs_store_mode(void);
 int native_ufs_store_open(uint64_t blocks, uint64_t *first_lba, const char **why);
 int native_ufs_store_read(uint64_t block, uint32_t count, void *dst);
@@ -78,17 +87,29 @@ bool overlayEnabled()
     return en != 0U;
 }
 
+bool useUfsDataStore()
+{
+    return xring_ufs_data_store_mode() != 0U;
+}
+
 } // namespace
 
 extern "C" {
 
 unsigned native_ufs_store_mode(void)
 {
+    unsigned ufsMode = xring_ufs_data_store_mode();
+    if (ufsMode != 0U) {
+        return ufsMode;
+    }
     return overlayEnabled() ? 2U : 0U;
 }
 
 int native_ufs_store_open(uint64_t blocks, uint64_t *first_lba, const char **why)
 {
+    if (useUfsDataStore()) {
+        return xring_ufs_data_store_open(blocks, first_lba, why);
+    }
     if (!overlayEnabled()) {
         if (why) *why = "violin-ram-overlay disabled";
         return 0;
@@ -136,6 +157,9 @@ int native_ufs_store_open(uint64_t blocks, uint64_t *first_lba, const char **why
 
 int native_ufs_store_read(uint64_t block, uint32_t count, void *dst)
 {
+    if (useUfsDataStore()) {
+        return xring_ufs_data_store_read(block, count, dst);
+    }
     if (gOverlayLock == nullptr) {
         return 0;
     }
@@ -150,6 +174,9 @@ int native_ufs_store_read(uint64_t block, uint32_t count, void *dst)
 
 int native_ufs_store_write(uint64_t block, uint32_t count, const void *src)
 {
+    if (useUfsDataStore()) {
+        return xring_ufs_data_store_write(block, count, src);
+    }
     if (gOverlayLock == nullptr) {
         return 0;
     }
@@ -175,16 +202,25 @@ int native_ufs_store_write(uint64_t block, uint32_t count, const void *src)
 
 int native_ufs_store_write_cached(uint64_t block, uint32_t count, const void *src)
 {
+    if (useUfsDataStore()) {
+        return xring_ufs_data_store_write_cached(block, count, src);
+    }
     return native_ufs_store_write(block, count, src);
 }
 
 int native_ufs_store_sync(void)
 {
+    if (useUfsDataStore()) {
+        return xring_ufs_data_store_sync();
+    }
     return __atomic_load_n(&violin_ram_overlay_opened, __ATOMIC_ACQUIRE) ? 1 : 0;
 }
 
 unsigned native_ufs_store_gpt_check(void)
 {
+    if (useUfsDataStore()) {
+        return xring_ufs_data_store_gpt_check();
+    }
     return 0U; /* Pure DRAM store: UFS GPT is untouched */
 }
 

@@ -2,6 +2,16 @@
 
 UniXNU device port for **Xiaomi Pad 7S Pro** (`violin` / `O81A` / `XRING O1`, 10-core `arm64e`, 16 GiB RAM, 3200x2136 display), targeting `iPadOS 27` (`ipados-27.0.1-24A446`, primary) and `macOS 27` (`macos-27.3-26C5035r`, via `os_overrides`).
 
+## Latest Development (`main` — Stage-8B: 10 GiB Bank 1 + Persistent `SHNGDATA`)
+
+`main` now includes Stage-8B work on top of `v0.1.0-stage8a-bootable`:
+
+- **10 GiB Bank 1 UEFI & XNU memory window** (`uefi-violin` `PcdSystemMemorySize=0x280000000`, XNU `BOOTSTRAP_TABLE_SIZE=34` in `05-violin-arm64e-47bit-ttbr0.patch`, `--qemu-mem-10g` gate) to eliminate 5 GiB Jetsam / `vnode jetsam` pressure.
+- **Range-fenced persistent `SHNGDATA` UFS 4.1 store** (`UniXNU-xring-o1-common` `ShngDataCore.h` + `XringUfsRoot` RW-fenced tail window strictly isolated above Android `#80 userdata` and `SHNGROOT v2`, plus `ViolinRamOverlayStore` UFS data-store dispatch).
+- **Stage-8B build & QEMU gate pipeline**: `scripts/stage8b/build_stage8b.py`, `apply_stage8b_xnu_hooks.py`, `run_stage8b_qemu_gates.py`, and `ViolinStage8BCoordinator.cpp`.
+
+> For the verified 270s 0-panic live `SpringBoard` lockscreen baseline, checkout tag **`v0.1.0-stage8a-bootable`** across all three repositories.
+
 ## Verified Bootable Release (`v0.1.0-stage8a-bootable`)
 
 On real **Xiaomi Pad 7S Pro (`violin`)** hardware with unlocked bootloader (dual-booting alongside unmodified Android 17 on `slot a` via non-active `boot_b`):

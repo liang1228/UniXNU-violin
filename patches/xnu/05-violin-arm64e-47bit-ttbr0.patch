@@ -40,11 +40,14 @@ diff --git a/osfmk/arm/pmap/pmap.h b/osfmk/arm/pmap/pmap.h
 --- a/osfmk/arm/pmap/pmap.h
 +++ b/osfmk/arm/pmap/pmap.h
 @@ -119,7 +119,7 @@
- /* Native 4 KiB: two roots plus up to seven L2 pages per 6 GiB mapping.
-  * The physical and virtual bases may each straddle an extra 1 GiB region.
-  */
+-/* Native 4 KiB: two roots plus up to seven L2 pages per 6 GiB mapping.
+- * The physical and virtual bases may each straddle an extra 1 GiB region.
+- */
 -#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 16)
-+#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 20)
++/* Native 4 KiB 4-level TTBR0 + 3-level TTBR1: 3 root/L1 pages plus up to 11 L2
++ * pages each for V=P and KVA on 8..10 GiB windows (25 <= 34, matches ARM_LARGE_MEMORY).
++ */
++#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 34)
  #else /* defined(ARM_LARGE_MEMORY) */
  #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 8)
  #endif /* defined(ARM_LARGE_MEMORY) */
