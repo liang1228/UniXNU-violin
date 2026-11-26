@@ -1,5 +1,5 @@
 [[source]]
 kind = "soc"
 name = "xring-o1"
-git = "https://github.com/REPLACE/UniXNU-xring-o1-common.git"
-commit = "c744ddfa73a37643a2bc59cb010c7e9d4cbe96b4"
+git = "https://github.com/liang1228/UniXNU-xring-o1-common.git"
+commit = "72da99dec91264159e01cb62815ab0ce56f2070c"
