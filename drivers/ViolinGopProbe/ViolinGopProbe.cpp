@@ -19,6 +19,7 @@
 #include <libkern/c++/OSArray.h>
 #include <libkern/c++/OSData.h>
 #include <pexpert/pexpert.h>
+#include <string.h>
 
 extern "C" {
 void kprintf(const char *fmt, ...);
@@ -58,10 +59,25 @@ void violin_storage_init(IOService *nub)
 }
 
 void violin_gop_presenter_init(void);
+volatile uint32_t violin_gop_dt_attached = 0;
 }
 
 static IOService *gViolinDisplayNub = nullptr;
 static IOService *gViolinGopPresenter = nullptr;
+
+static bool setDtCStringData(IORegistryEntry *entry, const char *key, const char *value)
+{
+    if (entry == nullptr || key == nullptr || value == nullptr) {
+        return false;
+    }
+    OSData *data = OSData::withBytes(value, static_cast<unsigned int>(strlen(value) + 1u));
+    if (data == nullptr) {
+        return false;
+    }
+    bool ok = entry->setProperty(key, data);
+    data->release();
+    return ok;
+}
 
 extern "C" void violin_gop_presenter_init(void)
 {
@@ -93,10 +109,13 @@ extern "C" void violin_gop_presenter_init(void)
             static_cast<unsigned long long>(fbBytes));
 
     IOService *parent = nullptr;
+    bool parentIsArmIo = false;
     IORegistryEntry *armIo = IORegistryEntry::fromPath("/arm-io", gIODTPlane);
     if (armIo != nullptr) {
         parent = OSDynamicCast(IOService, armIo);
-        if (parent == nullptr) {
+        if (parent != nullptr) {
+            parentIsArmIo = true;
+        } else {
             armIo->release();
         }
     }
@@ -118,8 +137,16 @@ extern "C" void violin_gop_presenter_init(void)
         kprintf("[VIOLIN_GOP] FAIL: nub alloc/init failed\n");
         return;
     }
+    /*
+     * IOMobileFramebuffer::getDisplayListNumber enumerates direct children of
+     * IODeviceTree:/arm-io in gIODTPlane and reads both "device_type" and
+     * "compatible" as CFData (OSData null-terminated byte arrays).
+     */
     nub->setName("display-subsystem");
-    nub->setProperty("compatible", "violin,gop-display");
+    nub->setName("display-subsystem", gIODTPlane);
+    (void)setDtCStringData(nub, "name", "display-subsystem");
+    (void)setDtCStringData(nub, "device_type", "display-subsystem");
+    (void)setDtCStringData(nub, "compatible", "violin,gop-display");
 
     uint32_t dotPitch = 216u;
     if (video.v_width == 3200 && video.v_height == 2136) {
@@ -161,6 +188,20 @@ extern "C" void violin_gop_presenter_init(void)
         kprintf("[VIOLIN_GOP] FAIL: nub attach/start failed\n");
         return;
     }
+
+    bool dtAttached = false;
+    bool dtFound = false;
+    if (parentIsArmIo) {
+        dtAttached = nub->attachToParent(parent, gIODTPlane);
+        IORegistryEntry *dtVerify = IORegistryEntry::fromPath("/arm-io/display-subsystem", gIODTPlane);
+        if (dtVerify != nullptr) {
+            dtFound = (dtVerify == nub);
+            dtVerify->release();
+        }
+    }
+    violin_gop_dt_attached = (dtAttached && dtFound) ? 1u : 0u;
+    kprintf("[VIOLIN_GOP] dt_attached=%u fromPath=%u armIo=%u device_type=display-subsystem\n",
+            dtAttached ? 1u : 0u, dtFound ? 1u : 0u, parentIsArmIo ? 1u : 0u);
     gViolinDisplayNub = nub;
 
     if (presenterEnabled != 0u) {

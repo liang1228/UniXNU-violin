@@ -57,13 +57,31 @@ extern volatile uint32_t native_legacy_formats[10];
 
 volatile uint32_t violin_legacy_stage = 0;
 volatile uint32_t violin_legacy_pm_ready = 0;
+volatile uint32_t violin_legacy_default_surface_ok = 0;
+volatile uint32_t violin_legacy_clients = 0;
 volatile uint32_t violin_legacy_validations = 0;
+volatile uint32_t violin_legacy_rejected = 0;
 volatile uint32_t violin_legacy_transfers = 0;
 volatile uint32_t violin_legacy_retirements = 0;
 volatile uint32_t violin_legacy_vsync_ticks = 0;
 volatile uint64_t violin_legacy_last_copy_us = 0;
 
 static IOService *gViolinLegacyDisplay = nullptr;
+static volatile uint32_t *gViolinGopFb = nullptr;
+static uint32_t gViolinGopWidth = 0;
+static uint32_t gViolinGopHeight = 0;
+static uint64_t gViolinGopBytes = 0;
+
+void native_legacy_default_surface_observed(bool ok, OSObject *surface, uint32_t width, uint32_t height,
+                                            uint64_t stride, uint64_t alloc, uint64_t descLen)
+{
+    __atomic_store_n(&violin_legacy_default_surface_ok, ok ? 1u : 0u, __ATOMIC_RELEASE);
+    kprintf("[VIOLIN_LEGACY] default_surface ok=%u surf=%p mode=%ux%u stride=%llu alloc=%llu desc=%llu\n",
+            ok ? 1u : 0u, surface, width, height,
+            static_cast<unsigned long long>(stride),
+            static_cast<unsigned long long>(alloc),
+            static_cast<unsigned long long>(descLen));
+}
 
 __attribute__((noreturn)) void native_legacy_backend_guard(unsigned slot, void *self, void *caller)
 {
@@ -77,6 +95,12 @@ bool native_legacy_gop_mapping_observed(IOService *display, IOMemoryMap *map, ui
     uint64_t va = map ? static_cast<uint64_t>(map->getVirtualAddress()) : 0ULL;
     uint64_t len = map ? static_cast<uint64_t>(map->getLength()) : 0ULL;
     violin_legacy_stage = 5;
+    if (va != 0ULL && len != 0ULL && width > 0u && height > 0u) {
+        gViolinGopFb = reinterpret_cast<volatile uint32_t *>(va);
+        gViolinGopWidth = width;
+        gViolinGopHeight = height;
+        gViolinGopBytes = len;
+    }
     kprintf("[VIOLIN_LEGACY] gop_mapping display=%p pa=0x%llx va=0x%llx bytes=0x%llx mode=%ux%u\n",
             display,
             static_cast<unsigned long long>(pa),
@@ -103,7 +127,8 @@ void native_legacy_pm_observed(unsigned stage, IOReturn status, unsigned long or
 
 void native_legacy_client_enter(task_t task, uint32_t type)
 {
-    kprintf("[VIOLIN_LEGACY] client_enter task=%p type=%u\n", task, type);
+    uint32_t c = __atomic_add_fetch(&violin_legacy_clients, 1u, __ATOMIC_RELAXED);
+    kprintf("[VIOLIN_LEGACY] client_enter #%u task=%p type=%u\n", c, task, type);
 }
 
 void native_legacy_client_observed(IOReturn status, IOUserClient *client)
@@ -123,7 +148,10 @@ void native_legacy_swap_stage(unsigned stage)
 void native_legacy_swap_validation_observed(bool accepted, unsigned reason, const void *req, const void *surf)
 {
     uint32_t n = __atomic_add_fetch(&violin_legacy_validations, 1u, __ATOMIC_RELAXED);
-    if (n <= 12u || !accepted) {
+    if (!accepted) {
+        __atomic_add_fetch(&violin_legacy_rejected, 1u, __ATOMIC_RELAXED);
+    }
+    if (n <= 12u || (!accepted && violin_legacy_rejected <= 16u)) {
         kprintf("[VIOLIN_LEGACY] validate #%u ok=%u reason=%u req=%p surf=%p\n",
                 n, accepted ? 1u : 0u, reason, req, surf);
     }
@@ -172,11 +200,22 @@ void native_legacy_copy_timing_observed(uint64_t ticks, uint64_t bytes)
 void native_legacy_retirement_observed(IOService *display)
 {
     uint32_t n = __atomic_add_fetch(&violin_legacy_retirements, 1u, __ATOMIC_RELAXED);
-    if (n <= 12u) {
-        kprintf("[VIOLIN_LEGACY] retire #%u display=%p stats(val=%u,kick=%u,copy=%u,ret=%u)\n",
+    if (n <= 12u || n == 20u || n == 40u || (n % 60u) == 0u) {
+        uint32_t p0 = 0, p1 = 0, p2 = 0, p3 = 0;
+        if (gViolinGopFb != nullptr && gViolinGopWidth > 0u && gViolinGopHeight > 0u) {
+            uint64_t rowPx = gViolinGopBytes / (4ULL * gViolinGopHeight);
+            if (rowPx >= gViolinGopWidth) {
+                p0 = gViolinGopFb[(gViolinGopHeight / 4u) * rowPx + (gViolinGopWidth / 4u)];
+                p1 = gViolinGopFb[(gViolinGopHeight / 2u) * rowPx + (gViolinGopWidth / 2u)];
+                p2 = gViolinGopFb[(gViolinGopHeight * 3u / 4u) * rowPx + (gViolinGopWidth * 3u / 4u)];
+                p3 = gViolinGopFb[(gViolinGopHeight - 16u) * rowPx + (gViolinGopWidth / 2u)];
+            }
+        }
+        kprintf("[VIOLIN_LEGACY] retire #%u display=%p stats(val=%u,kick=%u,copy=%u,ret=%u) px=(0x%08x,0x%08x,0x%08x,0x%08x)\n",
                 n, display,
                 native_legacy_swapstat[0], native_legacy_swapstat[1],
-                native_legacy_swapstat[7], native_legacy_swapstat[11]);
+                native_legacy_swapstat[7], native_legacy_swapstat[11],
+                p0, p1, p2, p3);
     }
 }
 
