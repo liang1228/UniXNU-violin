@@ -850,6 +850,7 @@ def main():
         "-Wno-unused-parameter", "-Wno-c99-designator", "-Wno-reorder-init-list",
         "-Wno-deprecated-enum-enum-conversion", "-Wno-unnecessary-virtual-specifier",
         "-Wno-missing-designated-field-initializers", "-Wno-unused-but-set-global",
+        "-I", str(probe_src.parent),
         "-I", str(tree / ".cache/xnu-work/osfmk"),
     ])
     res_p = subprocess.run(probe_cmd, cwd=record["directory"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

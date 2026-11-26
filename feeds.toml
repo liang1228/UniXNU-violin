@@ -2,4 +2,4 @@
 kind = "soc"
 name = "xring-o1"
 git = "https://github.com/liang1228/UniXNU-xring-o1-common.git"
-commit = "d1ccae83b0df6d7833f23579adaca9eb638df73b"
+commit = "e29fc5cc8f3f4a74183900071ccb795787ad6039"

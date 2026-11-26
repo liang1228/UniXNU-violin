@@ -4,7 +4,7 @@ schema_version = 1
 name = "violin"
 soc = "XRING O1"
 os_profile = "ipados-27.0.1-24A446"
-summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24..26 Stage-0..8B boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input, VNPDISK2 LZ4 FAT32 payload disk, full 12 GiB - 16 MiB Bank 1 DRAM read-only firewall scan (6,910/6,910 pages OK, 0 TZ holes), 10 GiB Bank 1 UEFI / exact 8 GiB XNU owned_memory_size (2,041,510 free pages, BOOTSTRAP_TABLE_BYTES=139264), ADT /defaults/kern.maxvnodes=32768 (eliminating 4,672 lines of vnode jetsam -> 0), 30-kext MH_FILESET arm64e XNU (xnu-12377.121.6, MAX_CPUS=10, XNU_NATIVE_PAN=1, FIPS HMAC sealed), 10/10-core SMP (incl. 2x Cortex-X925), dual KTZ8866A AppleARMBacklight + AppleKeyStoreState, XRING O1 256s DW_APB_WDT 0xEC00C000 feeder (CRASH=Normal), Dual-Boot Scheme D1 (352.47 GiB untouched Android 17 + KernelSU 3.3.1 on slot a + 128.00 GiB UFS 4.1 raw tail carrying 14.67 GiB RO SHNGROOT v2 + 16 GiB 6-layer fenced persistent SHNGDATA @ LBA 99,382,264..103,576,696), and Stage-8B LIVE Cold+Warm persistent ipados-27.0.1-24A446 SpringBoard Lock Screen (Run 1B Cold 240s 0-panic/0-vnode-jetsam, 293 procs, 2,000 MiB free, ovl=0 MiB, 452 frames val=452/rej=0, 237,650 pages = 928.3 MiB flushed via sync_internal+doSynchronizeCache+SYNCHRONIZE CACHE(10) with gpt_after=0x0 & valid SHNGDATA CRC32; Run 2 Warm 150s 0-panic/0-vnode-jetsam, ovl_state=2 Resumed hdr=0, 237,650 -> 280,848 pages = 1,097.1 MiB, APFS xid 1026->1252, resumed=1 sb=1 pb=(1,1,1), frames at t=130s ~50-80s faster, 3,160 MiB free, Primary/Backup GPT & SHNGROOT 0d7121e2... 100% conserved). Stage-8C touch (SPI9) / Pogo keyboard / USB-C xHCI host & XringDwc3 USB-NCM input to unlock to Home Screen and UFS MCQ IRQ speedup remain next."
+summary = "Xiaomi Pad 7S Pro (O81A, XRING O1) Format 2 device repository targeting ipados-27.0.1-24A446 and macos-27.3-26C5035r (arm64e). Live 2026-11-24..26 Stage-0..8C boot_b runs verified EL1 handoff, 5-key PAC + TGran16=1, DPU RCH9 3200x2136 GOP (0x29BFF000), SPMI Ch1 PMIC key input, VNPDISK2 LZ4 FAT32 payload disk, 10 GiB Bank 1 UEFI / exact 8 GiB XNU owned_memory_size (2,041,510 free pages, BOOTSTRAP_TABLE_BYTES=139264), ADT /defaults/kern.maxvnodes=32768 (0 vnode jetsam), 30-kext MH_FILESET arm64e XNU (xnu-12377.121.6, MAX_CPUS=10, XNU_NATIVE_PAN=1, FIPS HMAC sealed), 10/10-core SMP (incl. 2x Cortex-X925), dual KTZ8866A AppleARMBacklight + AppleKeyStoreState, XRING O1 256s DW_APB_WDT 0xEC00C000 feeder (CRASH=Normal), Dual-Boot Scheme D1 (352.47 GiB untouched Android 17 + KernelSU 3.3.1 on slot a + 128.00 GiB UFS 4.1 raw tail carrying 14.67 GiB RO SHNGROOT v2 + 16 GiB 6-layer fenced persistent SHNGDATA), and Stage-8C LIVE touchscreen unlock + High-Hz WC 4-worker FastFb presentation: ARM FF-A xsp1 + EL3 SMC 0xC3002C00 + dw_gpio2 DR1=0x0C + DW APB SPI9 brought up Novatek NVT-36536 TDDI Cascade (fw_ver=0x17, 40x60 THP, touch-orient=4) through 207-slot PAC-audited ViolinHidInput (PrimaryUsage=0x0D/0x04) + 220-slot IOHIDEventDriver FromEdgeTip (0x800) hook, unlocking genuine ipados-27.0.1-24A446 Lock Screen by physical bottom-edge swipe and accurately navigating into Settings -> General (verified photo + 141,362 B ramoops 218bd4d2..., 0 panics, 0 PAC faults, 3,200 MiB free, SHNGROOT 0d7121e2... 100% conserved), while WC 4-worker ldp/stnp ViolinFastFb + vsync=120 cut 3200x2136 frame copy from 50.6 ms -> 7.98 ms min / 10.94 ms avg (5-6.3x speedup, 77.7 FPS peak on Lock Screen). Stage-9 XRING O1 Immortalis-G925 (Mali CSF) GPU/Metal acceleration, UFS MCQ IRQ speedup, and Pogo/USB peripherals remain next."
 
 [[area]]
 id = "configuration"
@@ -221,46 +221,50 @@ findings = [
   "Stage-7E Wave 2B verified end-to-end 28-kext NativeLegacyDisplay Phase-7B + closed-source IOSurface + IOMobileGraphicsFamily across host PAC/prelink audit (379 vtable slots 0 base mismatches / 211 rewritten, 127 base + 13 subclass callsites audited/patched incl. super-blraa slots 312 & 319, 212 native_original_branches_rebound, 0 extra stubs), QEMU -smp 10 gate (QEMU_RC=0, 1280x800, 2 swaps, readback=ok), and live violin boot_b (37,769,216 B image 19fb9120..., boot_id=d34f9a03..., 46,697 B byte-identical ramoops 399f4767...): 10/10 CPUs online + XringUfs RO PASS + NativeLegacyDisplay PM stage=1..4 (state=(en=1,pwr=1), vsync 60 Hz) + EL0 IOSurfaceRoot sel 0 27.34 MB 3200x2136 BGRA surface -> 2x IOMFB sel 4/5/6(waitType=1) swaps (58.00/57.96 ms copy = 471 MB/s, 93.91/92.90 ms total, 6/6 exact scanout pixel readback, 3s hold) -> clean PSCI_SYSTEM_RESET(smc) + verified stock boot_b/boot_a SHA-256 restore.",
   "Stage-7F Wave 3B verified read-only 6-bank XringGpio (VER_ID_CODE=0x3231352a, hall/ls_en/lcd_id/ptn_rst ok=11111), CRG-gated polling DW APB XringI2c on BOTH I2C3 (0xEC103000) and I2C11 (0xEC10B000, IC_COMP_TYPE=0x44570140, explicit STOP/RESTART for IC_EMPTYFIFO_HOLD_MASTER_EN), and dual KTZ8866A@0x11 AppleARMBacklight service across host ASan/UBSan tests (7 suites, 2048 round-trips), QEMU -smp 10 gate (QEMU_RC=0), and live violin boot_b (48,394 B byte-identical ramoops 7c52bbbb...): both ICs id=0x21 init=1302 stepped synchronously through low=976 (0x00,0x7a) -> high=1627 (0x03,0xcb) -> restore=1302 with exact readback match=1 and err=0, never touching 0x08 bias bits.",
   "Stage-8A fixed ViolinGopProbe gIODTPlane /arm-io/display-subsystem attachment with null-terminated OSData device_type+compatible (required by 24A446 IOMobileFramebuffer getDisplayListNumber) and patched the 4 inherited pure-virtual PAC diversity slots [214,216,257,258] from introducing class IOMobileFramebuffer (0xb486/0xbd70/0x358b/0xe1af) in build-violin-legacy-display.py: Run 6 captured live visible iPadOS 27.0.1 SpringBoard Lock Screen (3200x2136 @2x date, 10:25 clock, Home indicator bar, photo 1bd3c519...), and Run 7 (270s, 0 panics, 530,119 B ramoops 4dad4f60...) proved 9 real iPadOS 27 display clients scanning out 480 consecutive 3200x2136 frames (val=480, rej=0, tx=480, ret=480, 50.6 ms/frame min, Apple boot logo fade -> sustained 6-7.6 FPS Lock Screen).",
+  "Stage-8C added WC 4-worker GPR ldp/stnp presenter ViolinFastFbCore.h hooked into NativeLegacyDisplay native_legacy_gpu_offer/complete with early-retire=1 vsync=120 vsync-fixed=1 and read-only dsi_tmg@0xE7051200 probe (ASan/UBSan 3/3 PASS, 379/379 PAC PASS): cut 3200x2136 frame copy from 50.6 ms -> 7.977 ms min / 10.938 ms avg (5-6.3x speedup, 3,720 frames / 77.7 FPS peak on Lock Screen in live-unlock; 9.001 ms min / 12.005 ms avg tear-free in live-unlock-v2 with flush=0).",
 ]
 completion = [
-  "Boot logo, UniXNU UEFI menu, NativeGOPPresenter Phase-7A, 28-kext NativeLegacyDisplay Phase-7B, dual KTZ8866A AppleARMBacklight dimming, and genuine iPadOS 27.0.1 SpringBoard Lock Screen (480 live 3200x2136 @2x frames, 9 clients, 0 rejections) all verified live on Xiaomi Pad 7S Pro.",
+  "Boot logo, UniXNU UEFI menu, NativeGOPPresenter Phase-7A, 28/30-kext NativeLegacyDisplay Phase-7B, dual KTZ8866A AppleARMBacklight dimming, WC 4-worker FastFb 120Hz presentation (7.98 ms min / 77.7 FPS peak), and interactive iPadOS 27.0.1 SpringBoard + Settings UI verified live on Xiaomi Pad 7S Pro.",
 ]
 limits = [
-  "CPU framebuffer copy path (50.6 ms min / 27.34 MB, 6-7.6 FPS) is used without native DPU plane swap or Mali GPU acceleration; unlocking past Lock Screen to Home Screen awaits SPI9 touch / Pogo keyboard / USB HID input.",
+  "CPU software rendering (QuartzCore/UIKit without Immortalis-G925 Mali CSF GPU/Metal acceleration) limits interactive desktop/app frame rate and causes blank gray sidebar icons despite fast 8-12 ms framebuffer presentation.",
 ]
 next_action = [
-  "Bring up SPI9 touch / Pogo keyboard / XringDwc3 USB-HID to unlock SpringBoard Lock Screen into Home Screen alongside 10 GiB Bank 1 expansion.",
+  "Research and bring up XRING O1 Immortalis-G925 (Mali CSF) GPU and Metal acceleration stack in Stage-9.",
 ]
 evidence = []
 
 [[area]]
 id = "input"
-status = "planned"
+status = "device-verified"
 components = []
-paths = ["proprietary-files.txt"]
+paths = ["proprietary-files.txt", "drivers/ViolinTouch/**", "drivers/ViolinHidInput/**", "scripts/build-violin-hid-input.py", "scripts/stage8c/**"]
 inputs = [
-  "Live input devices: NVTCapacitiveTouchScreen (NVT_xiaomi_touch_TC / xiaomi-touch-violin on spi@e1507000), NVTCapacitivePenM80p / P81c, Xiaomi Keyboard/Mouse/Touch/Consumer (nanosic,803 @ 0x4c on i2c@ec10a000), pmic pwrkey/volumeup/volumedown.",
+  "Live input devices: NVTCapacitiveTouchScreen (NVT-36536 TDDI Cascade on spi@e1507000, 40x60 THP matrix, build-local OEM FW outside git), NVTCapacitivePenM80p / P81c, Xiaomi Keyboard/Mouse/Touch/Consumer (nanosic,803 @ 0x4c on i2c@ec10a000), pmic pwrkey/volumeup/volumedown.",
 ]
 configuration = [
-  "No HID/touch components selected yet; QcomGeniSpi is Qualcomm-specific and excluded.",
+  "XringFfaCore.h + XringSpi9Core.h power up SPI9 clocks/resets/secure IOC (PAD_GPIO_076..080) via ARM FF-A v1.0 xsp1 (0x8001) and EL3 SMC FID_SPI_MISC_PINCTRL (0xC3002C00); ViolinTouchDriver.cpp drives dw_gpio2 DR1=0x0C CS + NVT-36536 FW download + 10-finger tracker (default touch-orient=4); ViolinHidInput.cpp exposes 207-slot PAC-audited IOHIDDevice (PrimaryUsage 0x0D/0x04) + 220-slot IOHIDEventDriver FromEdgeTip (0x800) hook.",
 ]
 procedure = [
-  "Audit xiaomi-modules/touch_driver/o81a and xring DW SPI/I2C/GPIO register headers in references/violin-v-oss.",
+  "Run host ASan/UBSan TDD (test_xring_spi9_core, test_nvt36536_core), 207-slot PAC audit (build-violin-hid-input.py), 10-core QEMU 4G/10G gates (SELFTEST PASS + drv_usage=0xd/0x4), then verify physical Lock Screen swipe-up unlock and Settings navigation on violin boot_b.",
 ]
 findings = [
   "Physical Pogo keyboard and stylus (M80p/P81c) HID endpoints are confirmed active alongside Novatek touch and PMIC buttons.",
-  "Stage-7I live boot_b probe (0 traps) verified PERI_CRG_ALL4_AND=0x00007e7f (I2C10 enabled), SPMI Ch1 read-only MPMIC_HLDO3 (PWR_0x0A28=0x01, VR_HLDO3_EN bit 7=0 confirming 3.3V rail is OFF at handoff), PERI_IOM_G136/137 Func 1, GPIO_088 LS_EN, GPIO_056 reset, and I2C10@0xEC10A000 (COMP_TYPE=0x44570140); 0x4C returned clean TX_ABRT (ABRT_7B_ADDR_NOACK), confirming Stage-7D needs HLDO3 + FF-A MLDO5 power-up with keyboard attached.",
+  "Stage-7I live boot_b probe (0 traps) verified PERI_CRG_ALL4_AND=0x00007e7f (I2C10 enabled), SPMI Ch1 read-only MPMIC_HLDO3 (PWR_0x0A28=0x01, VR_HLDO3_EN bit 7=0 confirming 3.3V rail is OFF at handoff), PERI_IOM_G136/137 Func 1, GPIO_088 LS_EN, GPIO_056 reset, and I2C10@0xEC10A000 (COMP_TYPE=0x44570140); 0x4C returned clean TX_ABRT (ABRT_7B_ADDR_NOACK), confirming Pogo needs HLDO3 + FF-A MLDO5 power-up with keyboard attached.",
+  "Stage-8C live boot_b runs (diag30-v2 + live-unlock + live-unlock-v2, 141,362 B ramoops 218bd4d2..., 0 panics, 0 PAC faults) verified end-to-end built-in NVT-36536 touchscreen: FF-A xsp1 rc=0, dw_gpio2 page-aligned 0xE000C000+0x100 bit-masked DR1=0x0C CS check lo=0 hi=1, secure IOC mux 77..79 -> func=4 (SPI9), identify rc=0 id=15:0e:00:23:65:03 casc=1, fw_download rc=0 fw_ver=0x17 grid=60x40 flen=5192, ViolinHidInput Touch-first descriptor + IOService::startDeferredMatches() + pure 0x0D/0x04 event-service properties (dev_usage=0xd/0x4, drv_usage=0xd/0x4, edge::install PASS slots=220), and touch-orient=4 Y-flip: user physically unlocked genuine ipados-27.0.1-24A446 Lock Screen on first bottom-edge swipe (17696,32350 -> 18312,8417, edge=(1,1,1)) and accurately tapped into Settings -> General (photo unlock-settings-proof.jpg, accurate X/Y confirmed by user).",
 ]
 completion = [
-  "UEFI volume/power key navigation works first, followed by XNU multi-touch, pen, keyboard, and button HID events.",
+  "UEFI volume/power key navigation and live XNU built-in multi-touch + bottom-edge swipe unlock + Settings interaction verified on Xiaomi Pad 7S Pro.",
 ]
 limits = [
-  "No DesignWare SPI/I2C, SPMI PMIC key, or O81A Novatek Darwin driver implemented yet.",
+  "Pogo keyboard (I2C10 nanosic,803), XNU-side PMIC volume/power buttons, and Novatek active stylus pen reports remain unimplemented.",
 ]
 next_action = [
-  "Wire PMIC volume/power buttons in uefi-violin first, then scope DW SPI9 + GPIO2 touch bring-up.",
+  "Optionally add XNU PMIC buttons and Pogo keyboard/trackpad alongside Stage-9 GPU bring-up.",
 ]
-evidence = []
+evidence = [
+  { kind = "device", revision = "f59a2f8a208721385ec72f6ebe9a06aece363dd2", reference = "drivers/ViolinHidInput/ViolinHidInput.cpp", command = "python3 -B scripts/stage8c/build_stage8c.py && python3 -B scripts/stage8c/run_stage8c_qemu_gates.py; fastboot -s 0401481180981540 flash boot_b violin-stage8c-v2-boot_b.img", result = "Live boot_b run (outputs/stage8c-touch-highhz/live-unlock-v2/live-console-ramoops-0.txt, 141,362 B sha256=218bd4d2..., 0 panics, 0 PAC faults, CRASH=Normal): NVT-36536 identify rc=0 (15:0e:00:23:65:03 casc=1), fw_ver=0x17 grid=60x40, orient=4, ViolinHidInput dev_usage=0xd/0x4 drv_usage=0xd/0x4 edge::install PASS slots=220; user unlocked ipados-27.0.1-24A446 Lock Screen on first bottom-edge swipe (17696,32350 -> 18312,8417) and accurately tapped into Settings -> General (photo unlock-settings-proof.jpg); SHNGROOT 0d7121e2... 100% conserved." },
+]
 
 [[area]]
 id = "gpu"

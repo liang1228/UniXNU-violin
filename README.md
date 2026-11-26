@@ -2,15 +2,24 @@
 
 UniXNU device port for **Xiaomi Pad 7S Pro** (`violin` / `O81A` / `XRING O1`, 10-core `arm64e`, 16 GiB RAM, 3200x2136 display), targeting `iPadOS 27` (`ipados-27.0.1-24A446`, primary) and `macOS 27` (`macos-27.3-26C5035r`, via `os_overrides`).
 
-## Latest Development (`main` — Stage-8B: 10 GiB Bank 1 + Persistent `SHNGDATA`)
+## Latest Release (`main` / `v0.3.0-stage8c-touch` — Stage-8C: Live Touch Unlock + High-Hz WC Display)
 
-`main` now includes Stage-8B work on top of `v0.1.0-stage8a-bootable`:
+On real **Xiaomi Pad 7S Pro (`violin`)** hardware (`ipados-27.0.1-24A446`, 30-kext `MH_FILESET`, dual-boot `boot_b` alongside unmodified Android 17 `slot a`):
 
-- **10 GiB Bank 1 UEFI & XNU memory window** (`uefi-violin` `PcdSystemMemorySize=0x280000000`, XNU `BOOTSTRAP_TABLE_SIZE=34` in `05-violin-arm64e-47bit-ttbr0.patch`, `--qemu-mem-10g` gate) to eliminate 5 GiB Jetsam / `vnode jetsam` pressure.
-- **Range-fenced persistent `SHNGDATA` UFS 4.1 store** (`UniXNU-xring-o1-common` `ShngDataCore.h` + `XringUfsRoot` RW-fenced tail window strictly isolated above Android `#80 userdata` and `SHNGROOT v2`, plus `ViolinRamOverlayStore` UFS data-store dispatch).
-- **Stage-8B build & QEMU gate pipeline**: `scripts/stage8b/build_stage8b.py`, `apply_stage8b_xnu_hooks.py`, `run_stage8b_qemu_gates.py`, and `ViolinStage8BCoordinator.cpp`.
+- **Interactive built-in `NVT-36536` touchscreen unlock to Home Screen & Settings**:
+  - ARM FF-A v1.0 `xsp1 (0x8001)` secure clock/reset/IOC pinmux + EL3 SMC `0xC3002C00` + `dw_gpio2 (0xE000C100)` bit-masked CS + DW APB `SPI9 (0xE1507000)` (`UniXNU-xring-o1-common/drivers/XringSpi/`).
+  - Novatek `NVT-36536` TDDI Cascade firmware download (`fw_ver=0x17`, `40x60` THP matrix) + 10-finger centroid/Hungarian tracker (`touch-orient=4`) (`drivers/ViolinTouch/`).
+  - 207-slot PAC-audited `ViolinHidInput` (`PrimaryUsagePage=0x0D / PrimaryUsage=0x04`) + 220-slot `IOHIDEventDriver::dispatchEvent` bottom-edge gesture wrapper (`kIOHIDDigitizerEventFromEdgeTip = 0x800`), verified live swiping up to unlock into Home Screen and tapping **Settings -> General** (0 panics, 0 PAC faults).
+- **5.6–6.3× faster 3200x2136 display scanout (`ViolinFastFbCore.h`)**:
+  - 4-core Write-Combining (`kIOMapWriteCombineCache`) + integer GPR `ldp`/`stnp` streaming presenter with `early-retire=1 vsync=120 vsync-fixed=1` reduces `3200x2136` (`27.34 MiB`) frame copy from `50.6 ms` to **`7.98 ms` min** (`77.7 FPS` peak on lockscreen, `9.00 ms` min / zero tearing with `flush=0`).
+- **Stage-8B 10 GiB Bank 1 + persistent `SHNGDATA` included**:
+  - 10 GiB UEFI / 8 GiB XNU `owned_memory_size`, `kern.maxvnodes=32768` (`0 vnode jetsam`), and 6-layer range-fenced persistent `SHNGDATA` UFS 4.1 store (Cold+Warm live verified, `3.2 GiB` free, `SHNGROOT` 100% conserved).
+- **Build pipeline**: `python3 -u scripts/stage8c/build_stage8c.py` (no OEM `.bin`/`.ini` or Apple binaries included in repo).
 
-> For the verified 270s 0-panic live `SpringBoard` lockscreen baseline, checkout tag **`v0.1.0-stage8a-bootable`** across all three repositories.
+## Previous Milestones
+
+- **Stage-8B**: 10 GiB Bank 1 UEFI/XNU window + range-fenced persistent `SHNGDATA` UFS 4.1 store (`scripts/stage8b/build_stage8b.py`).
+- **Stage-8A (`v0.1.0-stage8a-bootable`)**: First live 270s 0-panic `SpringBoard` lockscreen (`3200x2136 @2x`, 10 cores, `DW_APB_WDT` watchdog kick, 16 GiB RAM Overlay, strictly read-only `SHNGROOT v2`).
 
 ## Verified Bootable Release (`v0.1.0-stage8a-bootable`)
 
